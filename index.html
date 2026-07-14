@@ -1,0 +1,3372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Cycling class cue timer</title>
+<style>
+  :root{
+    --bg:#0f1720; --surface:#182431; --surface-2:#20303f;
+    --text:#eef3f6; --text-secondary:#8fa3b3;
+    --accent:#ffa632; --accent-ink:#2a1700; --accent-soft:#3a2c14;
+    --border:#28384a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,Roboto,"Segoe UI",sans-serif;}
+  .wrap{max-width:480px;margin:0 auto;padding:22px 16px 60px;}
+  h1{font-size:13px;font-weight:600;margin:0 0 18px;text-align:center;color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase;}
+  .profile-row{display:flex;gap:8px;margin-bottom:22px;}
+  select, input[type=text]{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:11px;font-size:15px;}
+  select{flex:1;min-width:0;}
+  button{background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:11px 14px;font-size:14px;cursor:pointer;}
+  button:active{transform:scale(0.97);}
+  .btn-accent{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700;}
+  .timer-box{text-align:center;padding:6px 0 22px;}
+  .timer-display{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:58px;font-weight:700;letter-spacing:1px;font-variant-numeric:tabular-nums;}
+  .timer-next{font-size:14px;color:var(--text-secondary);margin:6px 0 0;min-height:20px;}
+  .timer-next .nbadge{display:inline-block;background:var(--surface);border:1px solid var(--border);color:var(--text-secondary);font-size:13px;padding:3px 10px;border-radius:999px;margin:0 3px;}
+  .controls{display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap;}
+  .controls button{font-size:15px;padding:13px 14px;}
+  .controls #btn-startpause{min-width:104px;}
+  .controls .skip-btn{font-size:16px;padding:13px 12px;}
+
+  /* Capture mode */
+  .capture-panel{background:var(--surface);border:1px solid var(--accent);border-radius:14px;padding:12px;margin-bottom:20px;}
+  .capture-panel.hidden{display:none;}
+  .preset-grid{display:flex;flex-wrap:wrap;gap:8px;}
+  .preset-btn{width:calc(50% - 4px);min-height:52px;font-size:15px;font-weight:600;padding:8px;}
+  .btn-mark{width:100%;margin-top:8px;min-height:48px;font-size:15px;}
+  .capture-status{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--text-secondary);}
+  .capture-status.hidden{display:none;}
+  .capture-status span{flex:1;min-width:0;}
+  .nudge-btn{padding:8px 12px;font-size:13px;flex-shrink:0;}
+  #btn-capture.capture-on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
+  .preset-edit-row{display:flex;gap:6px;padding:5px 0;align-items:center;}
+  .preset-edit-row input{min-width:0;font-size:13px;padding:8px 6px;flex:1;}
+
+  /* Now card */
+  .now-card{background:var(--surface);border-radius:14px;padding:18px 20px;margin-bottom:20px;border:1px solid var(--border);}
+  .now-label{font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-secondary);margin:0 0 10px;}
+  .now-head{display:flex;align-items:flex-start;gap:8px;}
+  .now-head .now-label{flex:1;min-width:0;}
+  .now-spotify{display:none;background:transparent;border:1px solid #1db954;color:#1db954;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;flex-shrink:0;}
+  .now-spotify.show{display:block;}
+  .now-bpm{display:none;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;flex-shrink:0;}
+  .now-bpm.has-bpm{border-color:var(--accent);color:var(--accent);}
+  .now-bpm.show{display:block;}
+  .bpm-value-row{display:flex;gap:10px;align-items:stretch;margin-bottom:8px;}
+  .bpm-value-row input{flex:1;min-width:0;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:11px;font-size:22px;text-align:center;font-family:monospace;}
+  .bpm-tap-btn{min-width:110px;font-size:17px;font-weight:700;}
+  .track-info{font-size:12px;color:var(--accent);font-weight:600;margin:0 0 6px;}
+  .track-info:empty{display:none;}
+  .now-meta{margin:0;}
+  .badge{display:inline-block;background:var(--surface-2);color:var(--text);font-size:15px;font-weight:600;padding:7px 14px;border-radius:999px;margin-right:8px;margin-bottom:6px;}
+  .now-card .badge:empty{display:none;}
+
+  /* Tracks section */
+  .tracks-section{margin-bottom:20px;background:var(--surface);border-radius:14px;border:1px solid var(--border);overflow:hidden;}
+  .section-header{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;user-select:none;-webkit-user-select:none;}
+  .section-header-left{display:flex;flex-direction:column;gap:3px;}
+  .section-title-text{font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-secondary);font-weight:600;}
+  .section-summary{font-size:12px;color:var(--text-secondary);}
+  .section-arrow{color:var(--text-secondary);font-size:14px;transition:transform 0.2s;flex-shrink:0;}
+  .section-arrow.open{transform:rotate(180deg);}
+  .tracks-body{padding:0 12px 12px;border-top:1px solid var(--border);}
+  .tracks-body.hidden{display:none;}
+  .tracks-col-header{display:flex;gap:6px;padding:8px 0 4px;align-items:center;}
+  .tracks-col-header span{font-size:10px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;}
+  .tcol-num{width:24px;flex-shrink:0;}
+  .tcol-name{flex:1;min-width:0;}
+  .tcol-dur{width:52px;flex-shrink:0;text-align:center;}
+  .tcol-actions{width:62px;flex-shrink:0;}
+
+  .track-item{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);}
+  .track-item:last-child{border-bottom:none;}
+  .track-item.active-track{background:var(--accent-soft);border-radius:8px;padding-left:8px;padding-right:8px;margin:0 -8px;}
+  .track-num{font-size:11px;color:var(--text-secondary);width:18px;flex-shrink:0;text-align:right;}
+  .track-jump{background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:11px;width:24px;height:26px;padding:0;border-radius:6px;flex-shrink:0;cursor:pointer;}
+  .track-item.active-track .track-jump{border-color:var(--accent);color:var(--accent);font-weight:700;}
+  input.track-name-inp{flex:1;min-width:0;font-size:13px;padding:7px 6px;}
+  input.track-dur-inp{width:52px;flex-shrink:0;text-align:center;font-family:monospace;font-size:13px;padding:7px 4px;}
+  .track-item.active-track input.track-dur-inp{color:var(--accent);font-weight:700;}
+  .track-actions{display:flex;gap:0;flex-shrink:0;}
+  .track-move{background:transparent;border:none;color:var(--text-secondary);font-size:13px;padding:4px 5px;cursor:pointer;}
+  .track-move:disabled{opacity:0.3;cursor:default;}
+  .track-del{background:transparent;border:none;color:var(--text-secondary);font-size:16px;padding:4px 5px;cursor:pointer;}
+  .track-audio-label{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:14px;color:var(--text-secondary);flex-shrink:0;}
+  .track-audio-label.loaded{border-color:#4caf50;color:#4caf50;}
+  .track-audio-label.session{border-color:var(--accent);color:var(--accent);}
+  .track-spotify-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:14px;padding:0;flex-shrink:0;}
+  .track-spotify-btn.linked{border-color:#1db954;color:#1db954;}
+  .track-lib-btn{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:12px;padding:0;flex-shrink:0;}
+  .track-lib-btn.has-cues{border-color:var(--accent);color:var(--accent);}
+  .track-audio-input{display:none;}
+  .add-track-btn{width:100%;margin-top:8px;border-style:dashed;color:var(--text-secondary);font-size:13px;padding:8px;}
+
+  /* Cue list */
+  .cue-item{padding:10px 0;border-bottom:1px solid var(--border);}
+  .cue-item.active{background:var(--accent-soft);border-radius:8px;padding-left:8px;padding-right:8px;}
+  .cue-top{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+  input.cue-time{width:52px;flex-shrink:0;text-align:center;font-family:monospace;font-size:13px;padding:8px 4px;}
+  input.cue-position{flex:1;min-width:0;font-size:13px;padding:8px 6px;}
+  input.cue-tempo{flex:1;min-width:0;font-size:13px;padding:8px 6px;}
+  input.cue-text{width:100%;font-size:14px;}
+  .cue-item.active input.cue-time{color:var(--accent);font-weight:700;}
+  .cue-del{background:transparent;border:none;color:var(--text-secondary);font-size:17px;padding:4px 6px;flex-shrink:0;}
+
+  /* Bottom row */
+  .bottom-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  .add-row{flex:1;border-style:dashed;color:var(--text-secondary);}
+  .btn-import{background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;padding:11px 14px;font-size:13px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+
+  /* Import modal */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:100;padding:16px;align-items:flex-end;justify-content:center;}
+  .modal-overlay.open{display:flex;}
+  .modal-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:440px;max-height:90vh;overflow-y:auto;}
+  .modal-title{font-size:16px;font-weight:700;margin:0 0 10px;}
+  .modal-desc{font-size:12px;color:var(--text-secondary);margin:0 0 12px;line-height:1.6;}
+  .modal-desc code{background:var(--surface-2);padding:1px 5px;border-radius:4px;font-size:11px;font-family:monospace;}
+  .modal-desc strong{color:var(--text);}
+  .import-textarea{width:100%;height:150px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:monospace;font-size:12px;resize:vertical;}
+  .file-pick-label{display:block;text-align:center;margin-bottom:4px;cursor:pointer;}
+  .sheet-url-inp{width:100%;font-size:13px;}
+  .clear-wrap{position:relative;}
+  .clear-wrap input{padding-right:36px;}
+  .inp-clear{position:absolute;right:2px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--text-secondary);font-size:15px;padding:8px 10px;cursor:pointer;}
+  .spotify-section{margin-top:20px;}
+  .spotify-section .modal-actions{margin-bottom:4px;}
+  .sync-section{margin-top:20px;padding-top:14px;border-top:1px solid var(--border);}
+  .sync-section .modal-actions{margin-bottom:4px;}
+  #apps-script-source{font-family:monospace;color:var(--text-secondary);}
+
+  /* Spotify import modal */
+  .spimp-search-row{display:flex;gap:8px;margin-bottom:10px;}
+  .spimp-search-row input{flex:1;min-width:0;font-size:13px;}
+  .spimp-list{max-height:45vh;overflow-y:auto;}
+  .spimp-item{display:block;width:100%;text-align:left;margin-bottom:6px;font-size:13px;padding:10px 12px;}
+  .spimp-sub{display:block;color:var(--text-secondary);font-size:11px;margin-top:2px;}
+  .spimp-row{padding:7px 4px;border-bottom:1px solid var(--border);font-size:13px;display:flex;justify-content:space-between;gap:8px;}
+  .spimp-row:last-child{border-bottom:none;}
+  .spimp-row .dur{color:var(--text-secondary);font-family:monospace;flex-shrink:0;}
+  .modal-radios{display:flex;gap:16px;margin-top:10px;font-size:13px;}
+  .modal-radios label{display:flex;align-items:center;gap:5px;cursor:pointer;}
+  .modal-actions{display:flex;gap:8px;margin-top:12px;}
+  .modal-actions button{flex:1;padding:12px;}
+
+  .sound-toggle{font-size:18px;padding:11px 14px;flex-shrink:0;}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cycling class cue timer</h1>
+
+  <div class="profile-row">
+    <select id="profile-select" aria-label="Class profile"></select>
+    <button id="btn-new-profile">+ New</button>
+    <button id="btn-delete-profile" aria-label="Delete this profile">🗑</button>
+  </div>
+
+  <div class="timer-box">
+    <div class="timer-display" id="timer-display">0:00</div>
+    <div class="timer-next" id="timer-next"></div>
+    <div class="controls">
+      <button id="btn-prev-track" class="skip-btn" aria-label="Previous track">⏮</button>
+      <button class="btn-accent" id="btn-startpause">▶ Start</button>
+      <button id="btn-reset">↺ Reset</button>
+      <button id="btn-next-track" class="skip-btn" aria-label="Next track">⏭</button>
+      <button id="btn-sound" class="sound-toggle" aria-label="Toggle sound alerts">🔔</button>
+      <button id="btn-screen" class="sound-toggle" aria-label="Keep screen awake" aria-pressed="true" title="Keep screen awake">🔆</button>
+      <button id="btn-capture" class="sound-toggle" aria-label="Toggle cue capture mode" aria-pressed="false">✎</button>
+    </div>
+  </div>
+
+  <div id="capture-panel" class="capture-panel hidden">
+    <div id="preset-grid" class="preset-grid"></div>
+    <button id="btn-mark" class="btn-mark">◉ Mark now</button>
+    <div id="capture-status" class="capture-status hidden">
+      <span id="capture-status-text"></span>
+      <button id="btn-nudge-back" class="nudge-btn">−2s</button>
+      <button id="btn-nudge-fwd" class="nudge-btn">+2s</button>
+    </div>
+    <button class="add-track-btn" id="btn-edit-presets">Edit presets…</button>
+  </div>
+
+  <div class="now-card">
+    <div class="now-head">
+      <p class="now-label">Now</p>
+      <button id="now-bpm" class="now-bpm" aria-label="Song BPM and beat cadence">♩</button>
+      <button id="now-spotify" class="now-spotify" aria-label="Open current track in Spotify">▶ Spotify</button>
+    </div>
+    <p class="track-info" id="track-info"></p>
+    <p class="now-meta">
+      <span class="badge" id="current-position"></span><span class="badge" id="current-load"></span><span class="badge" id="current-tempo"></span>
+    </p>
+  </div>
+
+  <div class="tracks-section">
+    <div class="section-header" id="tracks-header" role="button" aria-expanded="false" tabindex="0">
+      <div class="section-header-left">
+        <span class="section-title-text">Tracks / Setlist</span>
+        <span class="section-summary" id="tracks-summary"></span>
+      </div>
+      <span class="section-arrow" id="tracks-arrow">▾</span>
+    </div>
+    <div id="tracks-body" class="tracks-body hidden">
+      <div class="tracks-col-header">
+        <span class="tcol-num">#</span>
+        <span class="tcol-name">Song / block name</span>
+        <span class="tcol-dur">Duration</span>
+        <span class="tcol-actions"></span>
+      </div>
+      <div id="track-list"></div>
+      <button class="add-track-btn" id="btn-add-track">+ Add track</button>
+      <button class="add-track-btn" id="btn-spimp-open">♫ Import from Spotify…</button>
+      <button class="add-track-btn" id="btn-fill-lib-cues">📋 Fill in cues from song library</button>
+      <button class="add-track-btn" id="btn-save-all-lib">📋 Save all songs' cues to library</button>
+    </div>
+  </div>
+
+  <div id="cue-list"></div>
+
+  <div class="bottom-row">
+    <button class="add-row" id="btn-add">+ Add cue</button>
+    <button class="btn-import" id="btn-sheet-refresh" style="display:none">⟳ Sheet</button>
+    <button class="btn-import" id="btn-sheet-export" style="display:none">⇧ Export</button>
+    <button class="btn-import" id="btn-import">↓ Import</button>
+  </div>
+
+  <div class="tracks-section spotify-section">
+    <div class="section-header" id="spotify-header" role="button" aria-expanded="false" tabindex="0">
+      <div class="section-header-left">
+        <span class="section-title-text">Spotify remote (optional)</span>
+        <span class="section-summary" id="spotify-summary">Not connected</span>
+      </div>
+      <span class="section-arrow" id="spotify-arrow">▾</span>
+    </div>
+    <div id="spotify-body" class="tracks-body hidden">
+      <p class="modal-desc" style="margin-top:12px;">
+        Lets the timer play/pause/skip the Spotify app on this phone automatically. Needs <strong>Spotify Premium</strong> and internet; without it, the ♫ deep links still work.<br><br>
+        <strong>One-time setup:</strong> at <code>developer.spotify.com/dashboard</code> create a free app, add this Redirect URI: <code id="spotify-redirect-display"></code>, then paste its Client ID below.<br>
+        <span id="spotify-mode-note"></span>
+      </p>
+      <input type="text" id="spotify-client-id" class="sheet-url-inp" placeholder="Client ID">
+      <div class="modal-actions">
+        <button id="btn-spotify-connect">Connect Spotify</button>
+        <button id="btn-spotify-disconnect" style="display:none">Disconnect</button>
+      </div>
+      <div id="spotify-finish-box" style="display:none">
+        <p class="modal-desc" style="margin-top:12px;">
+          A Spotify page just opened in a new tab. After you approve, the browser lands on a page that <strong>can't load — that's expected</strong>. Copy the whole address from that tab's address bar and paste it here:
+        </p>
+        <div class="clear-wrap">
+          <input type="text" id="spotify-code-input" class="sheet-url-inp" placeholder="http://127.0.0.1:8888/callback?code=…">
+          <button class="inp-clear" data-clears="spotify-code-input" aria-label="Clear pasted address">✕</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-accent" id="btn-spotify-finish">Finish connection</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BPM modal -->
+<div class="modal-overlay" id="bpm-modal" role="dialog" aria-modal="true" aria-label="Song BPM">
+  <div class="modal-box">
+    <p class="modal-title" id="bpm-title">Song BPM</p>
+    <p class="modal-desc">Riding "on the beat" is one pedal revolution per two beats. <span id="bpm-cadences"></span></p>
+    <div class="bpm-value-row">
+      <input type="number" id="bpm-input" min="40" max="240" step="1" placeholder="bpm" inputmode="numeric">
+      <button id="bpm-tap" class="btn-accent bpm-tap-btn">TAP</button>
+    </div>
+    <p class="modal-desc" id="bpm-tap-hint"></p>
+    <div class="modal-actions" id="bpm-analyze-row" style="display:none">
+      <button id="bpm-analyze">🎵 Detect from the loaded audio file</button>
+    </div>
+    <div class="modal-actions">
+      <button id="bpm-listen">🎤 Listen to the song playing</button>
+    </div>
+    <div class="modal-actions">
+      <button id="bpm-cancel">Cancel</button>
+      <button class="btn-accent" id="bpm-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Spotify import modal -->
+<div class="modal-overlay" id="spimp-modal" role="dialog" aria-modal="true" aria-label="Import from Spotify">
+  <div class="modal-box">
+    <p class="modal-title">Import from Spotify</p>
+    <div class="spimp-search-row">
+      <input type="text" id="spimp-search" placeholder="Search songs…">
+      <button id="spimp-search-btn" aria-label="Search Spotify">Search</button>
+    </div>
+    <p class="modal-desc" id="spimp-hint"></p>
+    <div id="spimp-list" class="spimp-list"></div>
+    <div class="modal-actions" id="spimp-playlist-actions" style="display:none">
+      <button id="spimp-append">Add to setlist</button>
+      <button class="btn-accent" id="spimp-replace">Replace setlist</button>
+    </div>
+    <div class="modal-actions">
+      <button id="spimp-back" style="display:none">‹ Playlists</button>
+      <button id="spimp-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Preset editor modal -->
+<div class="modal-overlay" id="preset-modal" role="dialog" aria-modal="true" aria-label="Edit capture presets">
+  <div class="modal-box">
+    <p class="modal-title">Capture presets</p>
+    <p class="modal-desc">One-tap buttons for capture mode. <strong>Name</strong> is the button label and cue text; <strong>Position</strong> and <strong>Tempo</strong> fill the cue's badges.</p>
+    <div id="preset-editor-list"></div>
+    <button class="add-track-btn" id="btn-add-preset">+ Add preset</button>
+    <div class="modal-actions">
+      <button class="btn-accent" id="btn-preset-done">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import modal -->
+<div class="modal-overlay" id="import-modal" role="dialog" aria-modal="true" aria-label="Import from spreadsheet">
+  <div class="modal-box">
+    <p class="modal-title">Import from spreadsheet</p>
+    <p class="modal-desc">
+      In Excel or Google Sheets, select your data (including the header row) and paste it below. Columns can be in any order.<br><br>
+      <strong>Simple format</strong> — columns: <code>Time</code>, <code>Cue</code>, <code>Position</code>, <code>Tempo</code><br><br>
+      <strong>With tracks</strong> — add <code>Track</code> and <code>Duration</code> columns. Times are relative to each song's start; tracks are built automatically and added to the setlist. Rows with a blank Track cell inherit the track above them (like merged cells).<br><br>
+      <strong>Load / resistance column</strong> — if you have a <code>Load</code> column instead of a <code>Cue</code> column, Load and Tempo are combined as the main cue text (e.g. "H · Power").
+    </p>
+    <label class="btn-import file-pick-label">📄 Choose a CSV file… (phone storage or Google Drive)
+      <input type="file" id="import-file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" style="display:none">
+    </label>
+    <p class="modal-desc" style="margin:6px 0 8px;">Picks a <code>.csv</code>/<code>.tsv</code> file into the box below. (A native Google Sheet isn't a file — for those, use the sheet link at the bottom, or File → Download → CSV first.)</p>
+    <textarea class="import-textarea" id="import-text" placeholder="Paste spreadsheet data here…"></textarea>
+    <div class="modal-radios">
+      <label><input type="radio" name="import-mode" value="replace" checked> Replace all cues</label>
+      <label><input type="radio" name="import-mode" value="append"> Append</label>
+    </div>
+    <div class="modal-actions">
+      <button id="btn-import-cancel">Cancel</button>
+      <button class="btn-accent" id="btn-import-go">Import</button>
+    </div>
+    <p class="modal-desc" style="margin:18px 0 8px;">
+      <strong>Or link a Google Sheet</strong> — one-time setup in Sheets: Share → General access → <strong>Anyone with the link → Viewer</strong>. Then paste the sheet's address-bar URL below. A <code>⟳ Sheet</code> button will re-import it anytime (needs internet).
+    </p>
+    <div class="clear-wrap">
+      <input type="text" id="sheet-url" class="sheet-url-inp" placeholder="https://docs.google.com/spreadsheets/d/…">
+      <button class="inp-clear" data-clears="sheet-url" aria-label="Clear sheet link">✕</button>
+    </div>
+    <div class="modal-actions">
+      <button id="btn-sheet-save">Save link &amp; refresh</button>
+    </div>
+
+    <div class="sync-section">
+      <p class="modal-desc" style="margin:18px 0 8px;">
+        <strong>Enable two-way sync (optional)</strong> — lets a <code>⇧ Export</code> button push this class's cues to the same sheet, so you can edit on one phone and pull the changes on another. Reading the sheet (above) needs no setup; writing to it needs a small one-time script, because Google blocks direct writes from a page like this one.<br><br>
+        <strong>Setup:</strong> open the same Sheet → Extensions → Apps Script → paste the code below → Deploy → New deployment → type <strong>Web app</strong> → Execute as <strong>Me</strong> → Who has access <strong>Anyone</strong> → Deploy → copy the <code>/exec</code> URL it gives you.
+      </p>
+      <textarea id="apps-script-source" class="import-textarea" style="height:110px;font-size:11px;" readonly></textarea>
+      <div class="modal-actions">
+        <button id="btn-copy-script">📋 Copy script</button>
+      </div>
+      <p class="modal-desc" style="margin:10px 0 6px;">Shared secret — paste the same value into the script's <code>SHEET_SECRET</code> line (a random one is filled in for you; just copy it across):</p>
+      <div class="clear-wrap">
+        <input type="text" id="sheet-secret" class="sheet-url-inp" placeholder="shared secret">
+        <button class="inp-clear" data-clears="sheet-secret" aria-label="Clear secret">✕</button>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-copy-secret">📋 Copy secret</button>
+        <button id="btn-gen-secret">🎲 Generate new</button>
+      </div>
+      <p class="modal-desc" style="margin:10px 0 6px;">Apps Script Web App URL (paste after deploying):</p>
+      <div class="clear-wrap">
+        <input type="text" id="script-url" class="sheet-url-inp" placeholder="https://script.google.com/macros/s/…/exec">
+        <button class="inp-clear" data-clears="script-url" aria-label="Clear script URL">✕</button>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-sync-save">Save sync settings</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var STORAGE_KEY = 'cycleCueProfiles_v1';
+  var LAST_PROFILE_KEY = 'cycleCueLastProfile_v1';
+
+  var defaultCues = [
+    {id:1,  time:'0:00',  text:'Warm up - easy flat road',      position:'Seated',         tempo:'70-80 rpm'},
+    {id:2,  time:'3:00',  text:'Build to moderate pace',        position:'Seated',         tempo:'80-85 rpm'},
+    {id:3,  time:'6:00',  text:'Seated climb',                  position:'Seated',         tempo:'60-65 rpm, heavy resistance'},
+    {id:4,  time:'10:00', text:'Standing climb',                position:'Standing',       tempo:'60-65 rpm'},
+    {id:5,  time:'14:00', text:'Recovery - flat',               position:'Seated',         tempo:'85-95 rpm, light'},
+    {id:6,  time:'16:00', text:'Sprint intervals x4',           position:'Seated/Standing',tempo:'100+ rpm'},
+    {id:7,  time:'22:00', text:'Recovery',                      position:'Seated',         tempo:'80-90 rpm, light'},
+    {id:8,  time:'25:00', text:'Big climb - heavy resistance',  position:'Standing',       tempo:'55-60 rpm'},
+    {id:9,  time:'32:00', text:'Standing sprints',              position:'Standing',       tempo:'90-100 rpm'},
+    {id:10, time:'36:00', text:'Recovery - flat',               position:'Seated',         tempo:'85-95 rpm, light'},
+    {id:11, time:'40:00', text:'Cool down',                     position:'Seated',         tempo:'60-70 rpm, easy'},
+    {id:12, time:'43:00', text:'Stretch',                       position:'Off bike',       tempo:'-'}
+  ];
+
+  var profiles       = {};
+  var currentProfile = '';
+  var cues           = [];
+  var tracks         = [];
+  var tracksOpen     = false;
+  var elapsedSeconds = 0;
+  var running        = false;
+  var intervalId     = null;
+  var lastCueIndex   = -1;
+  var lastTrackIndex = -1;
+  var soundOn        = true;
+  var audioObjects   = {};   // track.id -> Audio element
+  var audioUrls      = {};   // track.id -> object URL
+  var audioNames     = {};   // track.id -> file name (session only)
+  var audioSessionOnly = {}; // track.id -> true when saving to IndexedDB failed
+  var audioQuotaAlerted = false;
+  var anchorEpochMs  = 0;    // wall-clock ms corresponding to elapsedSeconds === 0
+  var wakeLock       = null;
+  var SCREEN_ON_KEY  = 'cycleCueScreenOn_v1';
+  var keepScreenOn   = true;
+  var SONG_CUES_KEY  = 'cycleSongCues_v1';
+  var songCueLibrary = {};   // songKey → [{time (relative to song start), text, position, tempo}]
+  var lastCapturedSongKey = null;
+  var lastCapturedLibIndex = -1;
+  var SONG_BPM_KEY   = 'cycleSongBpm_v1';
+  var songBpmMap     = {};   // songKey → bpm (number) — BPM follows songs like cues do
+
+  // ── Time utilities ─────────────────────────────────────────────────────────
+
+  function parseTime(str){
+    str = String(str).trim();
+    if(str.indexOf(':') !== -1){
+      var parts = str.split(':');
+      if(parts.length === 3){
+        return (Number(parts[0])||0)*3600 + (Number(parts[1])||0)*60 + (Number(parts[2])||0);
+      }
+      return (Number(parts[0])||0)*60 + (Number(parts[1])||0);
+    }
+    return Number(str) || 0;
+  }
+
+  function formatTime(totalSeconds){
+    var t = Math.max(0, Math.floor(totalSeconds));
+    return Math.floor(t/60) + ':' + String(t%60).padStart(2,'0');
+  }
+
+  // ── Sound ──────────────────────────────────────────────────────────────────
+
+  function playBeep(){
+    try{
+      var ctx  = new (window.AudioContext||window.webkitAudioContext)();
+      var osc  = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.frequency.value = 880;
+      osc.type = 'sine';
+      gain.gain.value = 0.15;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      setTimeout(function(){ osc.stop(); ctx.close(); }, 180);
+    }catch(e){}
+  }
+
+  // ── Audio persistence (IndexedDB) ──────────────────────────────────────────
+  // Only MP3 blobs live here; all cue/profile data stays in localStorage.
+  // Keys are "<profileName>\u0000<trackId>" because copied profiles share
+  // track ids. Any failure flips audioDbFailed and the app degrades to
+  // session-only audio (today's behaviour).
+
+  var audioDb = null;
+  var audioDbFailed = false;
+  var audioDbOpening = null;
+
+  function openAudioDb(cb){
+    if(audioDb){ cb(audioDb); return; }
+    if(audioDbFailed || !window.indexedDB){ audioDbFailed = true; cb(null); return; }
+    if(audioDbOpening){ audioDbOpening.push(cb); return; }
+    audioDbOpening = [cb];
+    function done(db){
+      var cbs = audioDbOpening || [];
+      audioDbOpening = null;
+      cbs.forEach(function(fn){ fn(db); });
+    }
+    try{
+      var req = indexedDB.open('cycleCueAudio_v1', 1);
+      req.onupgradeneeded = function(){
+        var db = req.result;
+        if(!db.objectStoreNames.contains('audioFiles')) db.createObjectStore('audioFiles');
+      };
+      req.onsuccess = function(){ audioDb = req.result; done(audioDb); };
+      req.onerror   = function(){ audioDbFailed = true; done(null); };
+      req.onblocked = function(){ audioDbFailed = true; done(null); };
+    }catch(e){ audioDbFailed = true; done(null); }
+  }
+
+  function audioKey(profileName, trackId){ return profileName + '\u0000' + trackId; }
+
+  function audioKeyRange(profileName){
+    return IDBKeyRange.bound(profileName + '\u0000', profileName + '\u0000\uffff');
+  }
+
+  function audioDbPut(key, record, cb){
+    openAudioDb(function(db){
+      if(!db){ if(cb) cb(false); return; }
+      try{
+        var tx = db.transaction('audioFiles', 'readwrite');
+        tx.objectStore('audioFiles').put(record, key);
+        tx.oncomplete = function(){ if(cb) cb(true); };
+        tx.onerror    = function(){ if(cb) cb(false); };
+        tx.onabort    = function(){ if(cb) cb(false); };
+      }catch(e){ if(cb) cb(false); }
+    });
+  }
+
+  function audioDbGetProfile(profileName, cb){
+    openAudioDb(function(db){
+      if(!db){ cb({}); return; }
+      var out = {};
+      try{
+        var req = db.transaction('audioFiles', 'readonly')
+                    .objectStore('audioFiles')
+                    .openCursor(audioKeyRange(profileName));
+        req.onsuccess = function(){
+          var cur = req.result;
+          if(cur){
+            out[String(cur.key).split('\u0000')[1]] = cur.value;
+            cur.continue();
+          } else { cb(out); }
+        };
+        req.onerror = function(){ cb(out); };
+      }catch(e){ cb(out); }
+    });
+  }
+
+  function audioDbDelete(key){
+    openAudioDb(function(db){
+      if(!db) return;
+      try{ db.transaction('audioFiles','readwrite').objectStore('audioFiles').delete(key); }catch(e){}
+    });
+  }
+
+  function audioDbDeleteProfile(profileName){
+    openAudioDb(function(db){
+      if(!db) return;
+      try{
+        var store = db.transaction('audioFiles','readwrite').objectStore('audioFiles');
+        var req = store.openCursor(audioKeyRange(profileName));
+        req.onsuccess = function(){
+          var cur = req.result;
+          if(cur){ cur.delete(); cur.continue(); }
+        };
+      }catch(e){}
+    });
+  }
+
+  function audioDbCopyProfile(fromName, toName, cb){
+    openAudioDb(function(db){
+      if(!db){ if(cb) cb(); return; }
+      try{
+        var tx = db.transaction('audioFiles','readwrite');
+        var store = tx.objectStore('audioFiles');
+        var req = store.openCursor(audioKeyRange(fromName));
+        req.onsuccess = function(){
+          var cur = req.result;
+          if(cur){
+            store.put(cur.value, audioKey(toName, String(cur.key).split('\u0000')[1]));
+            cur.continue();
+          }
+        };
+        tx.oncomplete = function(){ if(cb) cb(); };
+        tx.onerror    = function(){ if(cb) cb(); };
+        tx.onabort    = function(){ if(cb) cb(); };
+      }catch(e){ if(cb) cb(); }
+    });
+  }
+
+  // Removes records whose profile or track no longer exists. Runs once at init.
+  function cleanOrphanAudio(){
+    openAudioDb(function(db){
+      if(!db) return;
+      try{
+        var store = db.transaction('audioFiles','readwrite').objectStore('audioFiles');
+        var req = store.openCursor();
+        req.onsuccess = function(){
+          var cur = req.result;
+          if(!cur) return;
+          var parts = String(cur.key).split('\u0000');
+          var keep = false;
+          var data = profiles[parts[0]];
+          if(data && !Array.isArray(data)){
+            var tlist = data.tracks || [];
+            for(var i=0; i<tlist.length; i++){
+              if(String(tlist[i].id) === parts[1]){ keep = true; break; }
+            }
+          }
+          if(!keep) cur.delete();
+          cur.continue();
+        };
+      }catch(e){}
+    });
+  }
+
+  // Fully detach a track's audio: session objects + stored blob.
+  function removeTrackAudio(track){
+    if(audioObjects[track.id]){ audioObjects[track.id].pause(); delete audioObjects[track.id]; }
+    if(audioUrls[track.id]){ URL.revokeObjectURL(audioUrls[track.id]); delete audioUrls[track.id]; }
+    delete audioNames[track.id];
+    delete audioSessionOnly[track.id];
+    audioDbDelete(audioKey(currentProfile, track.id));
+  }
+
+  // Builds the in-session Audio element for a track from a blob/File.
+  function attachAudioBlob(track, blob, fileName){
+    if(audioUrls[track.id]) URL.revokeObjectURL(audioUrls[track.id]);
+    audioUrls[track.id] = URL.createObjectURL(blob);
+    var audio = new Audio(audioUrls[track.id]);
+    audio.preload = 'auto';
+    audioObjects[track.id] = audio;
+    audioNames[track.id] = fileName || '';
+  }
+
+  // ── Profile storage ────────────────────────────────────────────────────────
+
+  function getProfileData(name){
+    var data = profiles[name];
+    if(!data) return {cues:[], tracks:[]};
+    if(Array.isArray(data)) return {cues: data, tracks: []};
+    return {cues: data.cues||[], tracks: data.tracks||[]};
+  }
+
+  function loadProfiles(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      profiles = raw ? JSON.parse(raw) : {};
+    }catch(e){ profiles = {}; }
+    if(Object.keys(profiles).length === 0){
+      profiles['Standard 45 min'] = {cues: defaultCues, tracks: []};
+    }
+    saveProfiles();
+  }
+
+  function saveProfiles(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles)); }catch(e){}
+  }
+
+  function saveCurrentDataIntoProfile(){
+    // Preserve extra profile fields (e.g. sheetUrl) — don't rebuild the object
+    var existing = profiles[currentProfile];
+    if(!existing || Array.isArray(existing)) existing = {};
+    existing.cues = cues;
+    existing.tracks = tracks;
+    profiles[currentProfile] = existing;
+    saveProfiles();
+  }
+
+  function populateProfileSelect(){
+    var select = document.getElementById('profile-select');
+    select.innerHTML = '';
+    Object.keys(profiles).forEach(function(name){
+      var opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      select.appendChild(opt);
+    });
+    select.value = currentProfile;
+  }
+
+  function loadProfile(name){
+    currentProfile = name;
+    document.getElementById('profile-select').value = name;
+    // Tear down the previous profile's audio (copied profiles share track ids,
+    // so per-track maps must never leak across profiles)
+    Object.keys(audioObjects).forEach(function(id){
+      try{ audioObjects[id].pause(); }catch(e){}
+    });
+    Object.keys(audioUrls).forEach(function(id){ URL.revokeObjectURL(audioUrls[id]); });
+    audioObjects = {}; audioUrls = {}; audioNames = {}; audioSessionOnly = {};
+
+    var data = getProfileData(name);
+    cues = data.cues.map(function(c){
+      return {id: c.id||Date.now()+Math.random(), time:c.time, text:c.text, position:c.position||'', tempo:c.tempo||''};
+    });
+    tracks = (data.tracks||[]).map(function(t){
+      return {id: t.id||Date.now()+Math.random(), name:t.name||'', duration:t.duration||'0:00', spotifyUri:t.spotifyUri||'', bpm:t.bpm||''};
+    });
+    var rawProfile = profiles[name];
+    var rawIsObj = rawProfile && !Array.isArray(rawProfile);
+    currentSheetUrl = (rawIsObj && rawProfile.sheetUrl) ? rawProfile.sheetUrl : '';
+    currentScriptUrl = (rawIsObj && rawProfile.scriptUrl) ? rawProfile.scriptUrl : '';
+    currentSheetSecret = (rawIsObj && rawProfile.sheetSecret) ? rawProfile.sheetSecret : '';
+    updateSheetRefreshButton();
+    updateSheetExportButton();
+    try{ localStorage.setItem(LAST_PROFILE_KEY, name); }catch(e){}
+    resetTimer();
+    renderCueList();
+    renderTrackList();
+
+    // Stored audio arrives async; labels turn green on the re-render
+    audioDbGetProfile(name, function(records){
+      if(currentProfile !== name) return;
+      var any = false;
+      tracks.forEach(function(t){
+        var rec = records[String(t.id)];
+        if(rec && rec.blob){ attachAudioBlob(t, rec.blob, rec.fileName); any = true; }
+      });
+      if(any) renderTrackList();
+    });
+  }
+
+  // ── Track utilities ────────────────────────────────────────────────────────
+
+  function getTrackBoundaries(){
+    var out = [], cum = 0;
+    tracks.forEach(function(t){
+      var dur = parseTime(t.duration);
+      out.push({track:t, start:cum, end:cum+dur});
+      cum += dur;
+    });
+    return out;
+  }
+
+  function getCurrentTrackInfo(){
+    if(!tracks.length) return null;
+    var bounds = getTrackBoundaries();
+    for(var i=0; i<bounds.length; i++){
+      var b = bounds[i];
+      if(elapsedSeconds >= b.start && (elapsedSeconds < b.end || i === bounds.length-1)){
+        return {track:b.track, index:i, total:tracks.length,
+                trackElapsed: elapsedSeconds - b.start,
+                trackDuration: b.end - b.start};
+      }
+    }
+    return null;
+  }
+
+  function updateTracksSummary(){
+    var summary = document.getElementById('tracks-summary');
+    if(!tracks.length){
+      summary.textContent = 'None — timer runs as one continuous class';
+      return;
+    }
+    var total = 0;
+    tracks.forEach(function(t){ total += parseTime(t.duration); });
+    summary.textContent = tracks.length + (tracks.length===1?' track':' tracks') + ' · ' + formatTime(total) + ' total';
+  }
+
+  // ── Track edits that keep cues glued to their songs ────────────────────────
+  // Cues live at absolute class times, so any edit that moves a track's start
+  // must move the affected cues too, or they silently land on the wrong song.
+
+  // Change a track's duration and shift every cue AFTER the track's old end by
+  // the delta, so later songs keep their cues. Cues inside the track keep
+  // their offsets (the track's start doesn't move). Doesn't save/render.
+  function setTrackDuration(track, newDurStr){
+    var b = findTrackBounds(track);
+    var oldDur = parseTime(track.duration);
+    var newDur = parseTime(newDurStr);
+    track.duration = newDurStr;
+    if(!b || oldDur === newDur) return false;
+    var delta = newDur - oldDur;
+    cues.forEach(function(c){
+      var t = parseTime(c.time);
+      if(t >= b.end) c.time = formatTime(Math.max(0, t + delta));
+    });
+    return true;
+  }
+
+  // Swap tracks[i] and tracks[i+1], moving each one's cue block with it.
+  function swapAdjacentTracks(i){
+    if(i < 0 || i+1 >= tracks.length) return;
+    var bounds = getTrackBoundaries();
+    var a = bounds[i], b = bounds[i+1];
+    var durA = a.end - a.start, durB = b.end - b.start;
+    cues.forEach(function(c){
+      var t = parseTime(c.time);
+      if(t >= a.start && t < a.end) c.time = formatTime(t + durB);
+      else if(t >= b.start && t < b.end) c.time = formatTime(t - durA);
+    });
+    var tmp = tracks[i]; tracks[i] = tracks[i+1]; tracks[i+1] = tmp;
+  }
+
+  // ── Render track list ──────────────────────────────────────────────────────
+
+  function renderTrackList(){
+    var container = document.getElementById('track-list');
+    container.innerHTML = '';
+    var info = getCurrentTrackInfo();
+    var currentIdx = info ? info.index : -1;
+
+    tracks.forEach(function(track, i){
+      var item = document.createElement('div');
+      item.className = 'track-item' + (i===currentIdx ? ' active-track' : '');
+
+      var numBtn = document.createElement('button');
+      numBtn.className = 'track-jump';
+      numBtn.textContent = i+1;
+      numBtn.setAttribute('aria-label', 'Jump to track ' + (i+1));
+      numBtn.title = 'Jump to this track';
+
+      var nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'track-name-inp';
+      nameInput.placeholder = 'Song / block name';
+      nameInput.value = track.name;
+
+      var durInput = document.createElement('input');
+      durInput.type = 'text';
+      durInput.className = 'track-dur-inp';
+      durInput.placeholder = '0:00';
+      durInput.value = track.duration;
+      durInput.title = 'Duration (m:ss)';
+
+      var actions = document.createElement('div');
+      actions.className = 'track-actions';
+
+      var upBtn = document.createElement('button');
+      upBtn.className = 'track-move';
+      upBtn.textContent = '▲';
+      upBtn.setAttribute('aria-label','Move up');
+      upBtn.disabled = i===0;
+
+      var downBtn = document.createElement('button');
+      downBtn.className = 'track-move';
+      downBtn.textContent = '▼';
+      downBtn.setAttribute('aria-label','Move down');
+      downBtn.disabled = i===tracks.length-1;
+
+      var delBtn = document.createElement('button');
+      delBtn.className = 'track-del';
+      delBtn.setAttribute('aria-label','Delete track');
+      delBtn.textContent = '✕';
+
+      var audioLabel = document.createElement('label');
+      var audioState = !audioObjects[track.id] ? '' : (audioSessionOnly[track.id] ? ' session' : ' loaded');
+      audioLabel.className = 'track-audio-label' + audioState;
+      audioLabel.title = !audioObjects[track.id] ? 'Load audio file'
+        : (audioSessionOnly[track.id]
+            ? 'Audio for this session only: ' + (audioNames[track.id]||'')
+            : 'Audio saved: ' + (audioNames[track.id]||'') + ' — tap to change');
+      audioLabel.textContent = '♪';
+
+      var audioInput = document.createElement('input');
+      audioInput.type = 'file';
+      audioInput.accept = 'audio/*';
+      audioInput.className = 'track-audio-input';
+      audioLabel.appendChild(audioInput);
+
+      var spotifyBtn = document.createElement('button');
+      spotifyBtn.className = 'track-spotify-btn' + (track.spotifyUri ? ' linked' : '');
+      spotifyBtn.textContent = '♫';
+      spotifyBtn.title = track.spotifyUri ? 'Spotify linked — tap to open or edit' : 'Set Spotify link';
+      spotifyBtn.setAttribute('aria-label','Spotify link for this track');
+
+      var libKey = songKey(track);
+      var libCount = (libKey && songCueLibrary[libKey]) ? songCueLibrary[libKey].length : 0;
+      var libBtn = document.createElement('button');
+      libBtn.className = 'track-lib-btn' + (libCount ? ' has-cues' : '');
+      libBtn.textContent = '📋';
+      libBtn.title = libCount
+        ? libCount + ' saved cue(s) for this song — tap to insert or update'
+        : 'No saved cues for this song yet — tap to save this class\'s cues';
+      libBtn.setAttribute('aria-label','Song cue library for this track');
+
+      actions.appendChild(upBtn);
+      actions.appendChild(downBtn);
+      actions.appendChild(delBtn);
+
+      item.appendChild(numBtn);
+      item.appendChild(nameInput);
+      item.appendChild(durInput);
+      item.appendChild(audioLabel);
+      item.appendChild(spotifyBtn);
+      item.appendChild(libBtn);
+      item.appendChild(actions);
+      container.appendChild(item);
+
+      libBtn.addEventListener('click', function(){
+        var key = songKey(track);
+        if(!key){ alert('Name this track (or link it to Spotify) first, so its cues can be saved and found later.'); return; }
+        var lib = songCueLibrary[key];
+        if(lib && lib.length){
+          if(window.confirm('"' + (track.name || 'This song') + '" has ' + lib.length + ' saved cue(s) in your song library.\n\n' +
+                             'OK = insert them into this class now\nCancel = replace the saved cues with this class\'s current cues for this song')){
+            var added = insertLibraryCuesForTrack(track);
+            if(added){ saveCurrentDataIntoProfile(); renderCueList(); renderTrackList(); }
+            else alert('Nothing new to add — this class already has cues at those times.');
+          } else {
+            if(window.confirm('Replace the ' + lib.length + ' saved cue(s) for "' + (track.name||'this song') + '" with the cues currently in this song\'s time range in this class?')){
+              saveTrackCuesToLibrary(track);
+              renderTrackList();
+            }
+          }
+        } else {
+          if(window.confirm('No saved cues yet for "' + (track.name||'this song') + '". Save this class\'s cues in this song\'s time range as a reusable template (so future playlists with this song get them automatically)?')){
+            saveTrackCuesToLibrary(track);
+            renderTrackList();
+          }
+        }
+      });
+
+      spotifyBtn.addEventListener('click', function(){
+        if(track.spotifyUri){
+          if(window.confirm('"' + (track.name || 'This track') + '" is linked to Spotify.\n\nOK = open in Spotify\nCancel = edit or remove the link')){
+            openSpotify(track.spotifyUri, track.name);
+            return;
+          }
+          var v = window.prompt('Edit the Spotify link — or enter just a minus sign (-) to remove it.', track.spotifyUri);
+          if(v === null) return;
+          v = v.trim();
+          if(v === '' || v === track.spotifyUri) return;   // no change
+          if(v === '-'){
+            track.spotifyUri = '';
+            saveCurrentDataIntoProfile();
+            renderTrackList();
+            return;
+          }
+          var parsed = parseSpotifyLink(v);
+          if(!parsed){ alert("That doesn't look like a Spotify link. In Spotify: ⋯ → Share → Copy link."); return; }
+          track.spotifyUri = parsed;
+          saveCurrentDataIntoProfile();
+          renderTrackList();
+          fillTrackMetaFromSpotify(track, parsed);
+          fillCuesFromLibrary([track]);
+        } else {
+          var nv = window.prompt('Paste a Spotify share link for "' + (track.name || ('track ' + (i+1))) + '"\n(Spotify: ⋯ → Share → Copy link)', '');
+          if(!nv) return;
+          var nparsed = parseSpotifyLink(nv.trim());
+          if(!nparsed){ alert("That doesn't look like a Spotify link. In Spotify: ⋯ → Share → Copy link."); return; }
+          track.spotifyUri = nparsed;
+          saveCurrentDataIntoProfile();
+          renderTrackList();
+          fillTrackMetaFromSpotify(track, nparsed);
+          fillCuesFromLibrary([track]);
+        }
+      });
+
+      numBtn.addEventListener('click', function(){ jumpToTrack(i); });
+      var nameBeforeEdit = track.name;
+      nameInput.addEventListener('focus', function(){ nameBeforeEdit = track.name; });
+      nameInput.addEventListener('input', function(){
+        track.name = nameInput.value;
+        saveCurrentDataIntoProfile();
+        updateTracksSummary();
+      });
+      // Renaming a name-keyed song would orphan its library template — carry
+      // the template (and BPM) over to the new name. Spotify-linked tracks are
+      // keyed by URI, so renaming those never touches the library.
+      nameInput.addEventListener('change', function(){
+        if(!track.spotifyUri){
+          var oldName = String(nameBeforeEdit||'').trim().toLowerCase();
+          var oldKey = oldName ? 'name:' + oldName : null;
+          var newKey = songKey(track);
+          if(oldKey && newKey && oldKey !== newKey){
+            var moved = false;
+            if(songCueLibrary[oldKey] && !songCueLibrary[newKey]){
+              songCueLibrary[newKey] = songCueLibrary[oldKey];
+              delete songCueLibrary[oldKey];
+              saveSongCueLibrary();
+              moved = true;
+            }
+            if(songBpmMap[oldKey] && !songBpmMap[newKey]){
+              songBpmMap[newKey] = songBpmMap[oldKey];
+              delete songBpmMap[oldKey];
+              saveSongBpmMap();
+              moved = true;
+            }
+            if(moved) renderTrackList();
+          }
+        }
+        nameBeforeEdit = track.name;
+      });
+      durInput.addEventListener('change', function(){
+        var shifted = setTrackDuration(track, durInput.value);
+        saveCurrentDataIntoProfile();
+        updateTracksSummary();
+        if(shifted) renderCueList();   // later songs' cues moved with their songs
+        else updateCurrentCueDisplay();
+      });
+      upBtn.addEventListener('click', function(){
+        if(i===0) return;
+        swapAdjacentTracks(i-1);
+        saveCurrentDataIntoProfile();
+        renderCueList();
+        renderTrackList();
+      });
+      downBtn.addEventListener('click', function(){
+        if(i===tracks.length-1) return;
+        swapAdjacentTracks(i);
+        saveCurrentDataIntoProfile();
+        renderCueList();
+        renderTrackList();
+      });
+      // Loaded ♪ taps offer remove/replace instead of silently opening the picker
+      audioLabel.addEventListener('click', function(e){
+        if(!audioObjects[track.id]) return;   // nothing loaded → default picker
+        e.preventDefault();
+        if(window.confirm('Audio for this track: ' + (audioNames[track.id]||'(file)') +
+                          '\n\nOK = remove it\nCancel = pick a different file')){
+          removeTrackAudio(track);
+          saveCurrentDataIntoProfile();
+          renderTrackList();
+          updateCurrentCueDisplay();
+        } else {
+          audioInput.click();
+        }
+      });
+      audioInput.addEventListener('change', function(){
+        var file = audioInput.files[0];
+        if(!file) return;
+        attachAudioBlob(track, file, file.name);
+        delete audioSessionOnly[track.id];
+        audioLabel.classList.add('loaded');
+        audioLabel.classList.remove('session');
+        audioLabel.title = 'Audio saved: ' + file.name + ' — tap to change';
+        // Auto-fill: name from the file name (only if blank), duration from the
+        // audio itself (always — the user just picked this file; still editable)
+        var picked = audioObjects[track.id];
+        function applyFileMeta(){
+          var changed = false;
+          if(!track.name){
+            track.name = file.name.replace(/\.[^.]+$/, '');
+            changed = true;
+          }
+          if(picked.duration && isFinite(picked.duration)){
+            var dur = formatTime(Math.round(picked.duration));
+            if(track.duration !== dur){ setTrackDuration(track, dur); changed = true; }
+          }
+          if(changed){
+            saveCurrentDataIntoProfile();
+            renderCueList();   // duration shift may have moved later cues
+            renderTrackList();
+          }
+          fillCuesFromLibrary([track]);   // in case this song already has saved cues
+        }
+        if(picked.readyState >= 1) applyFileMeta();
+        else picked.addEventListener('loadedmetadata', applyFileMeta);
+        var pickedProfile = currentProfile;
+        audioDbPut(audioKey(pickedProfile, track.id),
+                   {blob:file, fileName:file.name, type:file.type, savedAt:Date.now()},
+                   function(ok){
+          if(ok || pickedProfile !== currentProfile) return;
+          audioSessionOnly[track.id] = true;
+          renderTrackList();   // repaint ♪ as session-only (rows may have re-rendered)
+          if(!audioQuotaAlerted){
+            audioQuotaAlerted = true;
+            alert("Couldn't save the audio file for next time (storage full or unavailable) — it will play today only.");
+          }
+        });
+      });
+      delBtn.addEventListener('click', function(){
+        var b = findTrackBounds(track);
+        var inRange = b ? cues.filter(function(c){
+          var t = parseTime(c.time);
+          return t >= b.start && t < b.end;
+        }).length : 0;
+        var msg = 'Delete track "' + (track.name || ('#'+(i+1))) + '"' +
+                  (inRange ? ' and its ' + inRange + ' cue(s)' : '') + '?' +
+                  ' Cues for later songs move up to stay with their songs.';
+        if(!window.confirm(msg)) return;
+        removeTrackAudio(track);
+        if(b){
+          var dur = b.end - b.start;
+          cues = cues.filter(function(c){
+            var t = parseTime(c.time);
+            return !(t >= b.start && t < b.end);
+          });
+          cues.forEach(function(c){
+            var t = parseTime(c.time);
+            if(t >= b.end) c.time = formatTime(t - dur);
+          });
+        }
+        tracks = tracks.filter(function(t){ return t.id !== track.id; });
+        saveCurrentDataIntoProfile();
+        renderCueList();
+        renderTrackList();
+        updateTracksSummary();
+      });
+    });
+    updateTracksSummary();
+  }
+
+  // ── Cue display ────────────────────────────────────────────────────────────
+
+  function updateCurrentCueDisplay(){
+    var rows = document.querySelectorAll('.cue-item');
+    var currentIndex = -1;
+    for(var i=0; i<cues.length; i++){
+      if(parseTime(cues[i].time) <= elapsedSeconds){ currentIndex = i; } else { break; }
+    }
+    rows.forEach(function(r,i){ r.classList.toggle('active', i===currentIndex); });
+
+    // Countdown to next cue change
+    var timerEl = document.getElementById('timer-display');
+    if(currentIndex + 1 < cues.length){
+      timerEl.textContent = formatTime(Math.max(0, parseTime(cues[currentIndex+1].time) - elapsedSeconds));
+    } else {
+      timerEl.textContent = cues.length ? '0:00' : formatTime(elapsedSeconds);
+    }
+
+    var positionEl  = document.getElementById('current-position');
+    var loadEl      = document.getElementById('current-load');
+    var tempoEl     = document.getElementById('current-tempo');
+    var trackInfoEl = document.getElementById('track-info');
+    var timerNextEl = document.getElementById('timer-next');
+
+    var trackInfo = getCurrentTrackInfo();
+    trackInfoEl.textContent = '';
+
+    // Spotify chip: shown when the current track is linked, or has a name and
+    // no local audio (local audio always wins)
+    nowSpotifyTrack = trackInfo ? trackInfo.track : null;
+    var showChip = nowSpotifyTrack &&
+      (nowSpotifyTrack.spotifyUri || (nowSpotifyTrack.name && !audioObjects[nowSpotifyTrack.id]));
+    document.getElementById('now-spotify').classList.toggle('show', !!showChip);
+
+    // BPM chip: song tempo + on-beat cadence for the current track
+    var bpmBtn = document.getElementById('now-bpm');
+    if(trackInfo){
+      var bpmVal = Math.round(Number(trackInfo.track.bpm)) || 0;
+      bpmBtn.textContent = bpmVal ? ('♩ ' + bpmVal + ' · beat ' + Math.round(bpmVal/2) + ' rpm') : '♩ BPM';
+      bpmBtn.classList.toggle('has-bpm', !!bpmVal);
+      bpmBtn.classList.add('show');
+    } else {
+      bpmBtn.classList.remove('show');
+    }
+
+    // Keep track list highlight in sync without full re-render
+    var trackItems = document.querySelectorAll('.track-item');
+    var activeIdx = trackInfo ? trackInfo.index : -1;
+    trackItems.forEach(function(r,i){ r.classList.toggle('active-track', i===activeIdx); });
+
+    function setCueBadges(cue){
+      positionEl.textContent = cue ? (cue.position || '') : '';
+      loadEl.textContent     = cue ? (cue.text     || '') : '';
+      tempoEl.textContent    = cue ? (cue.tempo    || '') : '';
+    }
+
+    function nextBadgesHTML(cue){
+      var parts = [cue.position, cue.text, cue.tempo].filter(function(s){ return s && s.trim() && s !== 'Rest'; });
+      if(!parts.length) parts = [cue.position || cue.text];
+      return parts.map(function(s){ return '<span class="nbadge">'+s+'</span>'; }).join('');
+    }
+
+    if(currentIndex === -1){
+      setCueBadges(cues.length ? cues[0] : null);
+      timerNextEl.innerHTML = '';
+    } else {
+      setCueBadges(cues[currentIndex]);
+      if(currentIndex+1 < cues.length){
+        timerNextEl.innerHTML = 'Next&nbsp;&rarr;&nbsp;' + nextBadgesHTML(cues[currentIndex+1]);
+      } else {
+        timerNextEl.innerHTML = '<span class="nbadge">Last cue</span>';
+      }
+    }
+
+    // Auto-advance playback when the track changes (handles mixed setlists:
+    // local MP3 ↔ Spotify ↔ nothing)
+    var newTrackIdx = trackInfo ? trackInfo.index : -1;
+    if(running && newTrackIdx !== lastTrackIndex){
+      if(lastTrackIndex >= 0 && tracks[lastTrackIndex]){
+        var prevAudio = audioObjects[tracks[lastTrackIndex].id];
+        if(prevAudio){ prevAudio.pause(); prevAudio.currentTime = 0; }
+      }
+      var newMode = getPlaybackMode(trackInfo ? trackInfo.track : null);
+      if(newMode === 'spotify'){
+        spotifyPlayTrack(trackInfo.track.spotifyUri, 0);
+      } else {
+        spotifyPause();   // leaving a Spotify-driven track (or setlist ended)
+        if(newMode === 'local'){
+          audioObjects[trackInfo.track.id].currentTime = 0;
+          audioObjects[trackInfo.track.id].play().catch(function(){});
+        }
+      }
+    }
+    lastTrackIndex = newTrackIdx;
+
+    if(running && currentIndex !== lastCueIndex && currentIndex !== -1){
+      if(soundOn) playBeep();
+    }
+    lastCueIndex = currentIndex;
+  }
+
+  // ── Render cue list ────────────────────────────────────────────────────────
+
+  function renderCueList(){
+    cues.sort(function(a,b){ return parseTime(a.time)-parseTime(b.time); });
+    var container = document.getElementById('cue-list');
+    container.innerHTML = '';
+    cues.forEach(function(cue){
+      var item = document.createElement('div');
+      item.className = 'cue-item';
+      item.dataset.id = String(cue.id);
+
+      var top = document.createElement('div');
+      top.className = 'cue-top';
+
+      var timeInput = document.createElement('input');
+      timeInput.type = 'text'; timeInput.className = 'cue-time'; timeInput.value = cue.time;
+
+      var positionInput = document.createElement('input');
+      positionInput.type = 'text'; positionInput.className = 'cue-position';
+      positionInput.placeholder = 'Position'; positionInput.value = cue.position||'';
+
+      var tempoInput = document.createElement('input');
+      tempoInput.type = 'text'; tempoInput.className = 'cue-tempo';
+      tempoInput.placeholder = 'Tempo'; tempoInput.value = cue.tempo||'';
+
+      var delBtn = document.createElement('button');
+      delBtn.className = 'cue-del'; delBtn.setAttribute('aria-label','Delete cue'); delBtn.textContent = '✕';
+
+      top.appendChild(timeInput); top.appendChild(positionInput);
+      top.appendChild(tempoInput); top.appendChild(delBtn);
+
+      var textInput = document.createElement('input');
+      textInput.type = 'text'; textInput.className = 'cue-text'; textInput.value = cue.text;
+      textInput.placeholder = 'Cue description';
+
+      item.appendChild(top); item.appendChild(textInput);
+      container.appendChild(item);
+
+      timeInput.addEventListener('change', function(){
+        cue.time = timeInput.value; saveCurrentDataIntoProfile(); renderCueList();
+      });
+      positionInput.addEventListener('input', function(){
+        cue.position = positionInput.value; saveCurrentDataIntoProfile();
+      });
+      tempoInput.addEventListener('input', function(){
+        cue.tempo = tempoInput.value; saveCurrentDataIntoProfile();
+      });
+      textInput.addEventListener('input', function(){
+        cue.text = textInput.value; saveCurrentDataIntoProfile();
+      });
+      delBtn.addEventListener('click', function(){
+        cues = cues.filter(function(c){ return c.id !== cue.id; });
+        saveCurrentDataIntoProfile(); renderCueList();
+      });
+    });
+    updateCurrentCueDisplay();
+  }
+
+  // ── Timer ──────────────────────────────────────────────────────────────────
+
+  function requestWakeLock(){
+    try{
+      if(wakeLock) return;
+      if(navigator.wakeLock && navigator.wakeLock.request){
+        navigator.wakeLock.request('screen').then(function(lock){
+          wakeLock = lock;
+          lock.addEventListener('release', function(){ wakeLock = null; });
+        }).catch(function(){});
+      }
+    }catch(e){}
+  }
+
+  function releaseWakeLock(){
+    try{
+      if(wakeLock){ wakeLock.release().catch(function(){}); wakeLock = null; }
+    }catch(e){}
+  }
+
+  // Hold the wake lock whenever the screen-awake toggle is on (default) or the
+  // timer is running — not only during playback, so the phone doesn't sleep
+  // while setting up a class.
+  function updateWakeLock(){
+    if((keepScreenOn || running) && document.visibilityState === 'visible'){
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+  }
+
+  // Sets the internal clock to an absolute class time and keeps the
+  // wall-clock anchor in step. Every jump/seek goes through here.
+  function setElapsed(seconds){
+    elapsedSeconds = Math.max(0, Math.floor(seconds));
+    anchorEpochMs = Date.now() - elapsedSeconds * 1000;
+    updateCurrentCueDisplay();
+  }
+
+  function tick(){
+    // Wall-clock derived, so throttled/blocked intervals never lose time
+    elapsedSeconds = Math.floor((Date.now() - anchorEpochMs) / 1000);
+    // When the current track's audio is actually playing, the music is ground
+    // truth — cues must land on the song, not the wall clock. Re-anchoring
+    // keeps the wall clock in step for when the audio ends.
+    var info = getCurrentTrackInfo();
+    if(info){
+      var a = audioObjects[info.track.id];
+      if(a && !a.paused && a.readyState >= 2){
+        elapsedSeconds = Math.floor(getTrackBoundaries()[info.index].start + a.currentTime);
+        anchorEpochMs = Date.now() - elapsedSeconds * 1000;
+      }
+    }
+    maybeSyncToSpotify();
+    updateCurrentCueDisplay();
+  }
+
+  function startPause(){
+    var btn = document.getElementById('btn-startpause');
+    if(!running){
+      running = true;
+      anchorEpochMs = Date.now() - elapsedSeconds * 1000;
+      spotifyOffline = false;   // each Start is a fresh chance to reach Spotify
+      // Set lastTrackIndex before starting so the auto-advance in updateCurrentCueDisplay
+      // doesn't fire immediately and double-start the first track
+      var info = getCurrentTrackInfo();
+      lastTrackIndex = info ? info.index : -1;
+      // Start playback for the current track, seeking to the right position
+      if(info){
+        var mode = getPlaybackMode(info.track);
+        if(mode === 'local'){
+          audioObjects[info.track.id].currentTime = info.trackElapsed;
+          audioObjects[info.track.id].play().catch(function(){});
+        } else if(mode === 'spotify'){
+          spotifyPlayTrack(info.track.spotifyUri, info.trackElapsed * 1000);
+        }
+      }
+      intervalId = setInterval(tick, 250);
+      updateWakeLock();
+      btn.textContent = '⏸ Pause';
+    } else {
+      running = false;
+      clearInterval(intervalId);
+      tracks.forEach(function(t){
+        if(audioObjects[t.id]) audioObjects[t.id].pause();
+      });
+      spotifyPause();
+      updateWakeLock();
+      btn.textContent = '▶ Start';
+    }
+  }
+
+  function resetTimer(){
+    running = false;
+    clearInterval(intervalId);
+    updateWakeLock();
+    elapsedSeconds = 0;
+    anchorEpochMs = Date.now();
+    lastCueIndex = -1;
+    lastTrackIndex = -1;
+    tracks.forEach(function(t){
+      if(audioObjects[t.id]){ audioObjects[t.id].pause(); audioObjects[t.id].currentTime = 0; }
+    });
+    spotifyPause();
+    document.getElementById('timer-display').textContent = cues.length ? formatTime(parseTime(cues[0].time)) : '0:00';
+    document.getElementById('btn-startpause').textContent = '▶ Start';
+    updateCurrentCueDisplay();
+  }
+
+  function addCue(){
+    cues.push({id:Date.now(), time:formatTime(elapsedSeconds), text:'', position:'', tempo:''});
+    saveCurrentDataIntoProfile(); renderCueList();
+  }
+
+  // ── Track jumping ──────────────────────────────────────────────────────────
+
+  function jumpToTrack(index){
+    if(!tracks.length) return;
+    index = Math.max(0, Math.min(tracks.length - 1, index));
+    var start = getTrackBoundaries()[index].start;
+    tracks.forEach(function(t){
+      if(audioObjects[t.id]) audioObjects[t.id].pause();
+    });
+    // Pre-set both indices so the jump neither beeps nor double-starts audio
+    lastTrackIndex = index;
+    var cueIdx = -1;
+    for(var i=0; i<cues.length; i++){
+      if(parseTime(cues[i].time) <= start){ cueIdx = i; } else { break; }
+    }
+    lastCueIndex = cueIdx;
+    setElapsed(start);
+    if(running){
+      var mode = getPlaybackMode(tracks[index]);
+      if(mode === 'spotify'){
+        spotifyPlayTrack(tracks[index].spotifyUri, 0);
+      } else {
+        spotifyPause();
+        if(mode === 'local'){
+          audioObjects[tracks[index].id].currentTime = 0;
+          audioObjects[tracks[index].id].play().catch(function(){});
+        }
+      }
+    }
+  }
+
+  function skipTrack(dir){
+    var info = getCurrentTrackInfo();
+    if(!info) return;
+    // ⏮ restarts the current track unless pressed within its first 3 seconds
+    if(dir < 0 && info.trackElapsed > 3){ jumpToTrack(info.index); return; }
+    jumpToTrack(info.index + dir);
+  }
+
+  // ── Song cue library ───────────────────────────────────────────────────────
+  // Cues can be attached to a SONG (not just a class): a global (not
+  // per-profile) map from a song identity to a reusable set of cues stored
+  // relative to that song's own start. Any track added to any profile — by
+  // any path (Spotify playlist import, song search, local file pick, linking
+  // a Spotify URI, or CSV/Sheet import) — gets matching cues auto-inserted at
+  // the right absolute offset. This is purely additive: it never edits or
+  // removes an existing cue, and skips inserting where a cue already sits at
+  // the exact same absolute time (so re-running it is always safe).
+
+  function loadSongCueLibrary(){
+    try{
+      var raw = localStorage.getItem(SONG_CUES_KEY);
+      songCueLibrary = raw ? JSON.parse(raw) : {};
+    }catch(e){ songCueLibrary = {}; }
+    if(!songCueLibrary || typeof songCueLibrary !== 'object') songCueLibrary = {};
+  }
+
+  function saveSongCueLibrary(){
+    try{ localStorage.setItem(SONG_CUES_KEY, JSON.stringify(songCueLibrary)); }catch(e){}
+  }
+
+  // Spotify URI is exact and preferred; a normalized track name is the
+  // fallback so local (Les Mills) files work too. Returns null when neither
+  // is available (e.g. a freshly added blank track).
+  function songKey(track){
+    if(!track) return null;
+    if(track.spotifyUri) return 'uri:' + track.spotifyUri;
+    var n = String(track.name||'').trim().toLowerCase();
+    return n ? 'name:' + n : null;
+  }
+
+  function findTrackBounds(track){
+    var bounds = getTrackBoundaries();
+    for(var i=0; i<bounds.length; i++){
+      if(bounds[i].track.id === track.id) return bounds[i];
+    }
+    return null;
+  }
+
+  // Inserts this track's saved cues (if any) into the current profile at the
+  // right absolute time. Additive + de-duped by exact absolute time. Does not
+  // save/render — callers batch that after inserting for possibly many tracks.
+  function insertLibraryCuesForTrack(track){
+    var key = songKey(track);
+    if(!key) return 0;
+    var lib = songCueLibrary[key];
+    if(!lib || !lib.length) return 0;
+    var b = findTrackBounds(track);
+    if(!b) return 0;
+    var existingTimes = {};
+    cues.forEach(function(c){ existingTimes[c.time] = true; });
+    var added = 0;
+    lib.forEach(function(tpl){
+      var abs = formatTime(b.start + parseTime(tpl.time));
+      if(existingTimes[abs]) return;
+      cues.push({id: Date.now()+Math.random(), time: abs, text: tpl.text||'', position: tpl.position||'', tempo: tpl.tempo||''});
+      existingTimes[abs] = true;
+      added++;
+    });
+    return added;
+  }
+
+  // Bulk pass over a set of tracks (defaults to the whole setlist); saves and
+  // re-renders once at the end if anything was added. Also fills each track's
+  // BPM from the song BPM map, so BPM follows songs the same way cues do.
+  function fillCuesFromLibrary(trackList){
+    var total = 0, bpmFilled = false;
+    (trackList||tracks).forEach(function(t){
+      total += insertLibraryCuesForTrack(t);
+      var key = songKey(t);
+      if(key && !t.bpm && songBpmMap[key]){ t.bpm = songBpmMap[key]; bpmFilled = true; }
+    });
+    if(total || bpmFilled) saveCurrentDataIntoProfile();
+    if(total) renderCueList();
+    else if(bpmFilled) updateCurrentCueDisplay();
+    return total;
+  }
+
+  // Replaces this song's saved template with whatever cues currently fall
+  // within this track's time range in the current class (converted to
+  // relative time). This is how an existing class's cues get turned into a
+  // reusable template, and how a wrong template gets corrected.
+  function saveTrackCuesToLibrary(track){
+    var key = songKey(track);
+    if(!key) return;
+    var b = findTrackBounds(track);
+    if(!b) return;
+    songCueLibrary[key] = cues.filter(function(c){
+      var t = parseTime(c.time);
+      return t >= b.start && t < b.end;
+    }).map(function(c){
+      return {time: formatTime(parseTime(c.time) - b.start), text:c.text, position:c.position, tempo:c.tempo};
+    });
+    saveSongCueLibrary();
+  }
+
+  // ── Song BPM (tempo of the music → cadence targets) ────────────────────────
+  // Riding "on the beat" = one pedal revolution per two beats, so cadence
+  // targets derive from a song's BPM: on-beat = bpm/2, half-time = bpm/4,
+  // double-time = bpm. BPM sources: manual entry, tap-tempo, Web Audio
+  // analysis of a loaded local file, or a BPM column in the sheet. Spotify's
+  // audio-features API was shut down in Nov 2024, so it can't be a source.
+  // Like cues, BPM follows the SONG (songBpmMap, global) not just the class.
+
+  function loadSongBpmMap(){
+    try{
+      var raw = localStorage.getItem(SONG_BPM_KEY);
+      songBpmMap = raw ? JSON.parse(raw) : {};
+    }catch(e){ songBpmMap = {}; }
+    if(!songBpmMap || typeof songBpmMap !== 'object') songBpmMap = {};
+  }
+
+  function saveSongBpmMap(){
+    try{ localStorage.setItem(SONG_BPM_KEY, JSON.stringify(songBpmMap)); }catch(e){}
+  }
+
+  function setTrackBpm(track, bpm){
+    bpm = Math.round(Number(bpm)) || 0;
+    track.bpm = bpm > 0 ? bpm : '';
+    var key = songKey(track);
+    if(key){
+      if(bpm > 0) songBpmMap[key] = bpm;
+      else delete songBpmMap[key];
+      saveSongBpmMap();
+    }
+    saveCurrentDataIntoProfile();
+    updateCurrentCueDisplay();
+  }
+
+  // ── BPM dialog: manual / tap tempo / audio analysis ────────────────────────
+
+  var bpmModalTrack = null;
+  var tapTimes = [];
+
+  function updateBpmCadences(){
+    var v = Math.round(Number(document.getElementById('bpm-input').value)) || 0;
+    document.getElementById('bpm-cadences').textContent = v
+      ? 'At ' + v + ' bpm: on-beat ' + Math.round(v/2) + ' rpm · half-time ' + Math.round(v/4) + ' rpm · double-time ' + v + ' rpm.'
+      : '';
+  }
+
+  function openBpmModal(track){
+    stopMicListen();
+    bpmModalTrack = track;
+    tapTimes = [];
+    document.getElementById('bpm-title').textContent = 'Song BPM — ' + (track.name || 'this track');
+    document.getElementById('bpm-input').value = track.bpm || '';
+    document.getElementById('bpm-analyze-row').style.display = audioObjects[track.id] ? '' : 'none';
+    document.getElementById('bpm-tap-hint').textContent = 'Or tap TAP on the beat — 4+ taps to lock in.';
+    updateBpmCadences();
+    document.getElementById('bpm-modal').classList.add('open');
+  }
+
+  var micListenHandle = null;
+
+  function stopMicListen(){
+    if(micListenHandle){ micListenHandle.cancel(); micListenHandle = null; }
+    var btn = document.getElementById('bpm-listen');
+    btn.textContent = '🎤 Listen to the song playing';
+  }
+
+  function closeBpmModal(){
+    stopMicListen();
+    document.getElementById('bpm-modal').classList.remove('open');
+    bpmModalTrack = null;
+  }
+
+  function bpmTap(){
+    var now = Date.now();
+    // A 3s silence restarts the measurement
+    if(tapTimes.length && now - tapTimes[tapTimes.length-1] > 3000) tapTimes = [];
+    tapTimes.push(now);
+    if(tapTimes.length > 16) tapTimes.shift();
+    var hint = document.getElementById('bpm-tap-hint');
+    if(tapTimes.length >= 4){
+      var span = tapTimes[tapTimes.length-1] - tapTimes[0];
+      var bpm = Math.round(60000 * (tapTimes.length-1) / span);
+      document.getElementById('bpm-input').value = bpm;
+      updateBpmCadences();
+      hint.textContent = tapTimes.length + ' taps → ' + bpm + ' bpm. Keep tapping to refine.';
+    } else {
+      hint.textContent = tapTimes.length + ' tap' + (tapTimes.length===1?'':'s') + '…';
+    }
+  }
+
+  // Live beat detection through the MICROPHONE — for songs the app can't
+  // decode (Spotify plays inside the Spotify app; its stream is unreachable).
+  // The phone listens to the music in the room for ~16s, low-passes it the
+  // same way as file analysis, and reuses bpmFromFilteredSignal(). Echo
+  // cancellation / noise suppression must be off or the music gets mangled.
+  // Returns a handle with .cancel(); all failures call onErr with guidance.
+  function listenBpmFromMic(onProgress, onOk, onErr){
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){
+      onErr('Microphone access is not supported in this browser.');
+      return null;
+    }
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC){ onErr('Audio is not supported in this browser.'); return null; }
+    var cancelled = false, finished = false;
+    var stream = null, ctx = null, src = null, filter = null, proc = null, mute = null;
+    var chunks = [], collected = 0;
+    function cleanup(){
+      try{ if(proc){ proc.onaudioprocess = null; proc.disconnect(); } }catch(e){}
+      try{ if(mute) mute.disconnect(); }catch(e){}
+      try{ if(filter) filter.disconnect(); }catch(e){}
+      try{ if(src) src.disconnect(); }catch(e){}
+      try{ if(stream) stream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+      try{ if(ctx) ctx.close(); }catch(e){}
+    }
+    navigator.mediaDevices.getUserMedia({
+      audio: {echoCancellation:false, noiseSuppression:false, autoGainControl:false}
+    }).then(function(s){
+      if(cancelled){ s.getTracks().forEach(function(t){ t.stop(); }); return; }
+      stream = s;
+      ctx = new AC();
+      var rate = ctx.sampleRate;
+      var target = Math.floor(rate * 16);   // ~16 seconds of music
+      src = ctx.createMediaStreamSource(stream);
+      filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 150;
+      proc = ctx.createScriptProcessor(4096, 1, 1);
+      // ScriptProcessor only fires when routed to the destination; a zero-gain
+      // node keeps the mic from feeding back out of the speakers.
+      mute = ctx.createGain();
+      mute.gain.value = 0;
+      src.connect(filter);
+      filter.connect(proc);
+      proc.connect(mute);
+      mute.connect(ctx.destination);
+      proc.onaudioprocess = function(ev){
+        if(cancelled || finished) return;
+        var d = ev.inputBuffer.getChannelData(0);
+        chunks.push(new Float32Array(d));
+        collected += d.length;
+        onProgress(Math.min(1, collected / target));
+        if(collected >= target){
+          finished = true;
+          var all = new Float32Array(collected);
+          var off = 0;
+          for(var i=0; i<chunks.length; i++){ all.set(chunks[i], off); off += chunks[i].length; }
+          cleanup();
+          var bpm = bpmFromFilteredSignal(all, rate);
+          if(bpm) onOk(bpm);
+          else onErr("Couldn't find a steady beat — turn the music up or hold the phone closer to the speaker, then try again.");
+        }
+      };
+    }).catch(function(err){
+      cleanup();
+      onErr(err && err.name === 'NotAllowedError'
+        ? 'Microphone permission was denied. Allow the mic for this page in the browser settings, then try again.'
+        : "Couldn't access the microphone.");
+    });
+    return {cancel: function(){
+      if(finished) return;
+      cancelled = true;
+      cleanup();
+    }};
+  }
+
+  // Beat detection on a loaded local file: decode → low-pass at 150Hz (keep
+  // the kick drum) → peak-pick → histogram the intervals folded into the
+  // 65–170 bpm octave → the modal interval is the tempo. Fitness music has a
+  // steady four-on-the-floor beat, which is the easy case for this approach.
+  function analyzeBpmFromTrack(track, onOk, onErr){
+    var url = audioUrls[track.id];
+    if(!url){ onErr('No audio file loaded for this track.'); return; }
+    var AC = window.AudioContext || window.webkitAudioContext;
+    var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if(!AC || !OAC){ onErr('Audio analysis is not supported in this browser.'); return; }
+    fetch(url).then(function(r){ return r.arrayBuffer(); }).then(function(buf){
+      var ctx = new AC();
+      ctx.decodeAudioData(buf, function(decoded){
+        try{ ctx.close(); }catch(e){}
+        analyzeDecodedBpm(decoded, onOk, onErr);
+      }, function(){
+        try{ ctx.close(); }catch(e){}
+        onErr("Couldn't decode this audio file.");
+      });
+    }).catch(function(){ onErr("Couldn't read the audio file."); });
+  }
+
+  function analyzeDecodedBpm(decoded, onOk, onErr){
+    try{
+      var rate = decoded.sampleRate;
+      // Analyze a 60s window starting 25% in (skips quiet intros)
+      var startS = Math.floor(decoded.duration * 0.25);
+      var lenS = Math.min(60, Math.floor(decoded.duration - startS));
+      if(lenS < 10){ startS = 0; lenS = Math.max(1, Math.floor(decoded.duration)); }
+      var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      var off = new OAC(1, lenS * rate, rate);
+      var src = off.createBufferSource();
+      src.buffer = decoded;
+      var filter = off.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 150;
+      src.connect(filter);
+      filter.connect(off.destination);
+      src.start(0, startS, lenS);
+      var handled = false;
+      function onRendered(rendered){
+        if(handled) return;
+        handled = true;
+        var bpm = bpmFromFilteredSignal(rendered.getChannelData(0), rate);
+        if(bpm) onOk(bpm);
+        else onErr("Couldn't find a steady beat in this song — use TAP instead.");
+      }
+      off.oncomplete = function(ev){ onRendered(ev.renderedBuffer); };
+      var p = off.startRendering();
+      if(p && p.then){
+        p.then(onRendered).catch(function(){
+          if(!handled){ handled = true; onErr('Audio analysis failed.'); }
+        });
+      }
+    }catch(e){ onErr('Audio analysis failed.'); }
+  }
+
+  function bpmFromFilteredSignal(data, rate){
+    var len = data.length, max = 0, i;
+    for(i=0; i<len; i++){ var v = Math.abs(data[i]); if(v > max) max = v; }
+    if(!max) return 0;
+    var minGap = Math.floor(rate * 60 / 220);   // no beats faster than 220 bpm
+    var threshold = max * 0.7;
+    var peaks = [];
+    // Lower the threshold until enough peaks emerge
+    while(threshold > max * 0.25){
+      peaks = [];
+      i = 0;
+      while(i < len){
+        if(Math.abs(data[i]) > threshold){ peaks.push(i); i += minGap; }
+        else i++;
+      }
+      if(peaks.length > 30) break;
+      threshold -= max * 0.05;
+    }
+    if(peaks.length < 8) return 0;
+    // The beat period is the typical gap between ADJACENT kicks. Histogramming
+    // multi-beat gaps too (an earlier version) let 2- and 4-beat intervals
+    // outvote the true tempo and report half time. Median of adjacent
+    // intervals is robust to the occasional missed or extra peak; averaging
+    // the intervals near the median then refines it.
+    var gaps = [];
+    for(var g=1; g<peaks.length; g++){ gaps.push(peaks[g] - peaks[g-1]); }
+    gaps.sort(function(x,y){ return x-y; });
+    var median = gaps[Math.floor(gaps.length/2)];
+    var sum = 0, n = 0;
+    for(var m=0; m<gaps.length; m++){
+      if(Math.abs(gaps[m] - median) <= median * 0.15){ sum += gaps[m]; n++; }
+    }
+    if(!n || n < gaps.length * 0.5) return 0;   // no dominant steady beat
+    var bpm = Math.round(60 * rate / (sum / n));
+    return (bpm >= 40 && bpm <= 240) ? bpm : 0;
+  }
+
+  // ── Cue capture mode ───────────────────────────────────────────────────────
+
+  var PRESETS_KEY = 'cycleCuePresets_v1';
+  var presets = [];
+  var captureOpen = false;
+  var lastCapturedCueId = null;
+
+  function defaultPresets(){
+    return [
+      {id:1, name:'Seated flat',    position:'Seated',   tempo:'80-100 rpm'},
+      {id:2, name:'Seated climb',   position:'Seated',   tempo:'60-80 rpm'},
+      {id:3, name:'Standing climb', position:'Standing', tempo:'60-80 rpm'},
+      {id:4, name:'Standing run',   position:'Standing', tempo:'80+ rpm'},
+      {id:5, name:'Sprint',         position:'Seated',   tempo:'100+ rpm'},
+      {id:6, name:'Recovery',       position:'Seated',   tempo:'easy spin'}
+    ];
+  }
+
+  function loadPresets(){
+    var stored = null;
+    try{
+      var raw = localStorage.getItem(PRESETS_KEY);
+      stored = raw ? JSON.parse(raw) : null;
+    }catch(e){ stored = null; }
+    // null = never saved → seed defaults; [] = user deleted all → respect it
+    presets = Array.isArray(stored) ? stored : defaultPresets();
+    savePresets();
+  }
+
+  function savePresets(){
+    try{ localStorage.setItem(PRESETS_KEY, JSON.stringify(presets)); }catch(e){}
+  }
+
+  function renderPresetGrid(){
+    var grid = document.getElementById('preset-grid');
+    grid.innerHTML = '';
+    presets.forEach(function(preset){
+      var btn = document.createElement('button');
+      btn.className = 'preset-btn';
+      btn.textContent = preset.name || 'Preset';
+      btn.addEventListener('click', function(){ captureCue(preset); });
+      grid.appendChild(btn);
+    });
+  }
+
+  function setCaptureOpen(open){
+    captureOpen = open;
+    document.getElementById('capture-panel').classList.toggle('hidden', !open);
+    var btn = document.getElementById('btn-capture');
+    btn.classList.toggle('capture-on', open);
+    btn.setAttribute('aria-pressed', open ? 'true' : 'false');
+  }
+
+  function updateCaptureStatus(text){
+    var row = document.getElementById('capture-status');
+    row.classList.remove('hidden');
+    document.getElementById('capture-status-text').textContent = text;
+  }
+
+  function captureCue(preset){
+    var cue = {
+      id: Date.now(),
+      time: formatTime(elapsedSeconds),
+      text: preset ? (preset.name || '') : '',
+      position: preset ? (preset.position || '') : '',
+      tempo: preset ? (preset.tempo || '') : ''
+    };
+    cues.push(cue);
+    lastCapturedCueId = cue.id;
+
+    // Also remember this cue relative to whatever song is currently playing,
+    // so it's automatically reused next time this song is in a playlist.
+    lastCapturedSongKey = null;
+    lastCapturedLibIndex = -1;
+    var info = getCurrentTrackInfo();
+    if(info){
+      var key = songKey(info.track);
+      if(key){
+        var lib = songCueLibrary[key] || (songCueLibrary[key] = []);
+        var rel = formatTime(info.trackElapsed);
+        var entry = {time: rel, text:cue.text, position:cue.position, tempo:cue.tempo};
+        // Upsert by relative time: re-teaching a song replaces the moment's
+        // cue in its template instead of stacking a duplicate.
+        lastCapturedLibIndex = -1;
+        for(var li=0; li<lib.length; li++){
+          if(lib[li].time === rel){ lib[li] = entry; lastCapturedLibIndex = li; break; }
+        }
+        if(lastCapturedLibIndex === -1){
+          lib.push(entry);
+          lastCapturedLibIndex = lib.length - 1;
+        }
+        lastCapturedSongKey = key;
+        saveSongCueLibrary();
+      }
+    }
+
+    saveCurrentDataIntoProfile();
+    renderCueList();
+    updateCaptureStatus('Added ' + cue.time + ' · ' + (cue.text || 'mark'));
+  }
+
+  function nudgeLastCue(delta){
+    var cue = null;
+    for(var i=0; i<cues.length; i++){
+      if(cues[i].id === lastCapturedCueId){ cue = cues[i]; break; }
+    }
+    if(!cue){ document.getElementById('capture-status').classList.add('hidden'); return; }
+    cue.time = formatTime(Math.max(0, parseTime(cue.time) + delta));
+    if(lastCapturedSongKey && lastCapturedLibIndex > -1){
+      var lib = songCueLibrary[lastCapturedSongKey];
+      if(lib && lib[lastCapturedLibIndex]){
+        var entry = lib[lastCapturedLibIndex];
+        entry.time = formatTime(Math.max(0, parseTime(entry.time) + delta));
+        // If the nudge landed on another entry's time, keep only this one
+        lib = lib.filter(function(x, xi){ return xi === lastCapturedLibIndex || x.time !== entry.time; });
+        lastCapturedLibIndex = lib.indexOf(entry);
+        songCueLibrary[lastCapturedSongKey] = lib;
+        saveSongCueLibrary();
+      }
+    }
+    saveCurrentDataIntoProfile();
+    renderCueList();
+    updateCaptureStatus('Added ' + cue.time + ' · ' + (cue.text || 'mark'));
+  }
+
+  function renderPresetEditor(){
+    var list = document.getElementById('preset-editor-list');
+    list.innerHTML = '';
+    presets.forEach(function(preset){
+      var row = document.createElement('div');
+      row.className = 'preset-edit-row';
+
+      var nameInput = document.createElement('input');
+      nameInput.type = 'text'; nameInput.placeholder = 'Name';
+      nameInput.value = preset.name || '';
+
+      var posInput = document.createElement('input');
+      posInput.type = 'text'; posInput.placeholder = 'Position';
+      posInput.value = preset.position || '';
+
+      var tempoInput = document.createElement('input');
+      tempoInput.type = 'text'; tempoInput.placeholder = 'Tempo';
+      tempoInput.value = preset.tempo || '';
+
+      var delBtn = document.createElement('button');
+      delBtn.className = 'cue-del'; delBtn.textContent = '✕';
+      delBtn.setAttribute('aria-label','Delete preset');
+
+      row.appendChild(nameInput); row.appendChild(posInput);
+      row.appendChild(tempoInput); row.appendChild(delBtn);
+      list.appendChild(row);
+
+      nameInput.addEventListener('input', function(){ preset.name = nameInput.value; savePresets(); });
+      posInput.addEventListener('input', function(){ preset.position = posInput.value; savePresets(); });
+      tempoInput.addEventListener('input', function(){ preset.tempo = tempoInput.value; savePresets(); });
+      delBtn.addEventListener('click', function(){
+        presets = presets.filter(function(p){ return p.id !== preset.id; });
+        savePresets();
+        renderPresetEditor();
+      });
+    });
+  }
+
+  function openPresetModal(){
+    renderPresetEditor();
+    document.getElementById('preset-modal').classList.add('open');
+  }
+
+  function closePresetModal(){
+    document.getElementById('preset-modal').classList.remove('open');
+    renderPresetGrid();
+  }
+
+  // ── Tracks section toggle ──────────────────────────────────────────────────
+
+  function setTracksOpen(open){
+    tracksOpen = open;
+    var body  = document.getElementById('tracks-body');
+    var arrow = document.getElementById('tracks-arrow');
+    var hdr   = document.getElementById('tracks-header');
+    body.classList.toggle('hidden', !open);
+    arrow.classList.toggle('open', open);
+    hdr.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  // ── Import CSV / TSV ───────────────────────────────────────────────────────
+
+  function parseImportData(text){
+    var lines = text.trim().split(/\r?\n/);
+    if(lines.length < 2) return {error:'Need at least a header row and one data row.'};
+
+    var delim = lines[0].indexOf('\t') !== -1 ? '\t' : ',';
+
+    function splitRow(row){
+      if(delim === '\t') return row.split('\t');
+      var result=[], cur='', inQ=false;
+      for(var i=0;i<row.length;i++){
+        var ch=row[i];
+        if(ch==='"'&&!inQ){inQ=true;}
+        else if(ch==='"'&&inQ){inQ=false;}
+        else if(ch===','&&!inQ){result.push(cur.trim());cur='';}
+        else{cur+=ch;}
+      }
+      result.push(cur.trim());
+      return result;
+    }
+
+    var headers = splitRow(lines[0]).map(function(h){ return h.toLowerCase().trim(); });
+
+    function colIdx(names){
+      for(var j=0;j<names.length;j++){
+        var needle = names[j].replace(/\s/g,'');
+        for(var k=0;k<headers.length;k++){
+          if(headers[k]===names[j] || headers[k].replace(/\s/g,'')===needle) return k;
+        }
+      }
+      return -1;
+    }
+
+    var colTime  = colIdx(['time','timestamp','t','start']);
+    var colCue   = colIdx(['cue','description','desc','instruction','text','note','cues']);
+    var colPos   = colIdx(['position','pos','body position']);
+    var colTempo = colIdx(['tempo','rpm','cadence','movement','type']);
+    var colLoad  = colIdx(['load','resistance','intensity','level','res']);
+    var colTrack = colIdx(['track','song','block','song name','track name','songname','trackname']);
+    var colDur   = colIdx(['duration','dur','length','song duration','track duration','songduration','trackduration']);
+    var colSpot  = colIdx(['spotify','spotify uri','spotify link','spotify url']);
+    var colBpm   = colIdx(['bpm','beats per minute','song bpm','songbpm']);   // song tempo, not cue cadence
+
+    if(colTime === -1 && colCue === -1){
+      return {error:'Could not find required columns. Make sure your header row includes "Time" and/or "Cue" (or similar column names).'};
+    }
+
+    // Parse raw rows
+    var rawRows = [];
+    for(var i=1; i<lines.length; i++){
+      var cells = splitRow(lines[i]);
+      if(cells.every(function(c){ return !c.trim(); })) continue;
+      var get = function(idx){ return (idx!==-1 && idx<cells.length) ? cells[idx].trim() : ''; };
+      rawRows.push({
+        time:     get(colTime),
+        cue:      get(colCue),
+        position: get(colPos),
+        tempo:    get(colTempo),
+        load:     get(colLoad),
+        track:    get(colTrack),
+        duration: get(colDur),
+        spotify:  get(colSpot),
+        bpm:      get(colBpm)
+      });
+    }
+
+    var hasTrackCol = colTrack !== -1;
+
+    function buildCueText(r){
+      if(colCue !== -1) return r.cue || 'Cue';
+      // No dedicated Cue column: use Load as main text (fall back to Tempo)
+      return r.load || r.tempo || 'Cue';
+    }
+
+    function buildCueTempo(r){
+      // When Load is the main text, put Tempo in the badge; otherwise use Tempo normally
+      return r.tempo;
+    }
+
+    if(!hasTrackCol){
+      // Simple: times are already absolute
+      return {
+        cues: rawRows.map(function(r,i){
+          return {id:Date.now()+i, time:r.time||'0:00', text:buildCueText(r),
+                  position:r.position, tempo:buildCueTempo(r)};
+        }),
+        tracks: []
+      };
+    }
+
+    // Track-relative mode
+    // Pass 1: resolve track names (empty cell = inherit previous, like merged cells)
+    var curTrackName = null;
+    rawRows.forEach(function(r){
+      if(r.track) curTrackName = r.track;
+      r._track = curTrackName || '';
+    });
+
+    // Pass 2: collect unique tracks in order, gather durations + Spotify links
+    var trackList = [], trackSeen = {};
+    function parseBpmCell(s){
+      var n = Math.round(parseFloat(s));
+      return (n > 0 && n < 300) ? n : '';
+    }
+    rawRows.forEach(function(r){
+      var name = r._track;
+      if(!name) return;
+      if(!trackSeen[name]){
+        var t = {id:Date.now()+trackList.length, name:name, duration: r.duration||'',
+                 spotifyUri: parseSpotifyLink(r.spotify||''), bpm: parseBpmCell(r.bpm)};
+        trackSeen[name] = t;
+        trackList.push(t);
+      } else {
+        if(r.duration && !trackSeen[name].duration) trackSeen[name].duration = r.duration;
+        if(r.spotify && !trackSeen[name].spotifyUri) trackSeen[name].spotifyUri = parseSpotifyLink(r.spotify);
+        if(r.bpm && !trackSeen[name].bpm) trackSeen[name].bpm = parseBpmCell(r.bpm);
+      }
+    });
+
+    // Assign default duration if none found and calculate offsets
+    var offsets = {}, cum = 0;
+    trackList.forEach(function(t){
+      if(!t.duration) t.duration = '3:00';
+      offsets[t.name] = cum;
+      cum += parseTime(t.duration);
+    });
+
+    // Build absolute-time cues. A row that carries only Track/Duration (no
+    // Cue/Position/Tempo/Load content) registers the track but adds no cue —
+    // this is how a music-only block round-trips through export without
+    // spawning a spurious placeholder cue.
+    var newCues = rawRows.filter(function(r){
+      return !!(r.cue || r.position || r.tempo || r.load);
+    }).map(function(r,i){
+      var relSecs = parseTime(r.time||'0');
+      var absSecs = r._track ? (offsets[r._track]||0) + relSecs : relSecs;
+      return {id:Date.now()+i, time:formatTime(absSecs),
+              text:buildCueText(r), position:r.position, tempo:buildCueTempo(r)};
+    });
+
+    return {cues:newCues, tracks:trackList};
+  }
+
+  function randomSecret(){
+    var bytes = new Uint8Array(18);
+    (window.crypto||window.msCrypto).getRandomValues(bytes);
+    var s = '';
+    for(var i=0;i<bytes.length;i++){ s += bytes[i].toString(36); }
+    return s.slice(0, 24);
+  }
+
+  function copyToClipboard(text, btn, label){
+    function flash(msg){
+      var old = btn.textContent;
+      btn.textContent = msg;
+      setTimeout(function(){ btn.textContent = old; }, 1800);
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ flash('✓ Copied'); }).catch(function(){
+        alert('Couldn\'t copy automatically — select the ' + label + ' text and copy it manually.');
+      });
+    } else {
+      alert('Couldn\'t copy automatically — select the ' + label + ' text and copy it manually.');
+    }
+  }
+
+  function openImportModal(){
+    document.getElementById('import-text').value = '';
+    document.getElementById('sheet-url').value = currentSheetUrl;
+    document.getElementById('script-url').value = currentScriptUrl;
+    document.getElementById('sheet-secret').value = currentSheetSecret || randomSecret();
+    document.getElementById('apps-script-source').value = APPS_SCRIPT_SOURCE;
+    document.querySelector('input[name="import-mode"][value="replace"]').checked = true;
+    document.getElementById('import-modal').classList.add('open');
+    setTimeout(function(){ document.getElementById('import-text').focus(); }, 50);
+  }
+
+  function closeImportModal(){
+    document.getElementById('import-modal').classList.remove('open');
+  }
+
+  function applyImportResult(result, mode){
+    if(mode === 'replace'){
+      cues = result.cues;
+      if(result.tracks.length){
+        tracks = result.tracks;
+        setTracksOpen(true);
+      }
+    } else {
+      result.cues.forEach(function(c){ c.id = Date.now()+Math.random(); });
+      cues = cues.concat(result.cues);
+      if(result.tracks.length){
+        result.tracks.forEach(function(t){ t.id = Date.now()+Math.random(); });
+        tracks = tracks.concat(result.tracks);
+        setTracksOpen(true);
+      }
+    }
+    saveCurrentDataIntoProfile();
+    renderCueList();
+    renderTrackList();
+    if(result.tracks.length){
+      // Imported BPMs are song facts — remember them globally, like cues
+      var mapChanged = false;
+      result.tracks.forEach(function(t){
+        var key = songKey(t);
+        if(key && t.bpm && songBpmMap[key] !== t.bpm){ songBpmMap[key] = t.bpm; mapChanged = true; }
+      });
+      if(mapChanged) saveSongBpmMap();
+      fillCuesFromLibrary(result.tracks);
+    }
+  }
+
+  function doImport(){
+    var text = document.getElementById('import-text').value.trim();
+    if(!text){ alert('Please paste some data first.'); return; }
+    var result = parseImportData(text);
+    if(result.error){ alert(result.error); return; }
+    if(!result.cues.length){ alert('No cue rows found. Check your data.'); return; }
+
+    var mode = document.querySelector('input[name="import-mode"]:checked').value;
+    if(running && !window.confirm('The class timer is running — importing will change cues mid-class. Continue?')) return;
+    applyImportResult(result, mode);
+    closeImportModal();
+  }
+
+  // ── Spotify deep links ─────────────────────────────────────────────────────
+  // Deep links only LAUNCH a song in the Spotify app — playback can't be
+  // paused/synced this way. Local audio always wins when both are set.
+
+  var nowSpotifyTrack = null;
+
+  function parseSpotifyLink(str){
+    str = String(str||'').trim();
+    if(!str) return '';
+    var m = str.match(/^spotify:(track|album|playlist|episode):([a-zA-Z0-9]+)/);
+    if(m) return 'spotify:' + m[1] + ':' + m[2];
+    m = str.match(/open\.spotify\.com\/(?:intl-[a-z\-]+\/)?(track|album|playlist|episode)\/([a-zA-Z0-9]+)/i);
+    if(m) return 'spotify:' + m[1].toLowerCase() + ':' + m[2];
+    return '';
+  }
+
+  function spotifyWebUrl(uri){
+    var parts = uri.split(':');
+    return 'https://open.spotify.com/' + parts[1] + '/' + parts[2];
+  }
+
+  function openSpotify(uri, fallbackName){
+    var isAndroid = /android/i.test(navigator.userAgent);
+    var target = '';
+    if(uri){
+      target = isAndroid ? uri : spotifyWebUrl(uri);
+    } else if(fallbackName){
+      target = isAndroid ? 'spotify:search:' + encodeURIComponent(fallbackName)
+                         : 'https://open.spotify.com/search/' + encodeURIComponent(fallbackName);
+    }
+    if(!target) return;
+    // Anchor click is more reliable than location.href for custom schemes
+    var a = document.createElement('a');
+    a.href = target;
+    if(target.indexOf('https:') === 0) a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  // ── Spotify Web API remote control (optional tier) ─────────────────────────
+  // PKCE OAuth runs in one of two modes depending on where the page lives:
+  //  • file:// (opened from phone storage) — nothing can listen on a redirect
+  //    URI, so the user copies the ?code=… address from the browser bar and
+  //    pastes it back (redirect URI: the 127.0.0.1 loopback below).
+  //  • hosted (http/https, e.g. GitHub Pages) — the page ITSELF is the
+  //    redirect URI: Spotify sends the browser back here with ?code=…, and
+  //    init() finishes the login automatically. No paste-back.
+  // Register BOTH redirect URIs in the Spotify developer app once, and either
+  // mode works. NOTE: localStorage is per-origin, so file:// and hosted modes
+  // have separate data — the Google Sheet export/import is the bridge.
+  // Tokens live in localStorage; refresh is silent. Everything degrades to
+  // deep links when offline or disconnected. Only spotify:track: URIs are
+  // remote-controlled; album/playlist links stay deep-link-only.
+
+  var SPOTIFY_AUTH_KEY = 'cycleSpotifyAuth_v1';
+  var SPOTIFY_PKCE_KEY = 'cycleSpotifyPkce_v1';
+  var SPOTIFY_LOOPBACK_REDIRECT = 'http://127.0.0.1:8888/callback';
+  var IS_HOSTED = location.protocol !== 'file:';
+
+  function getSpotifyRedirectUri(){
+    return IS_HOSTED ? (location.origin + location.pathname) : SPOTIFY_LOOPBACK_REDIRECT;
+  }
+  var spotifyAuth = {};
+  var spotifyOffline = false;
+  var spotifyOpenSection = false;
+  var spotifyDeviceAlerted = false;
+  var spotifyStartedPlayback = false;
+  var lastSpotifySync = 0;
+
+  function loadSpotifyAuth(){
+    try{
+      var raw = localStorage.getItem(SPOTIFY_AUTH_KEY);
+      spotifyAuth = raw ? JSON.parse(raw) : {};
+    }catch(e){ spotifyAuth = {}; }
+    if(!spotifyAuth || typeof spotifyAuth !== 'object') spotifyAuth = {};
+  }
+
+  function saveSpotifyAuth(){
+    try{ localStorage.setItem(SPOTIFY_AUTH_KEY, JSON.stringify(spotifyAuth)); }catch(e){}
+  }
+
+  function spotifyConnected(){ return !!(spotifyAuth.clientId && spotifyAuth.refreshToken); }
+
+  function updateSpotifyStatus(){
+    var summary = document.getElementById('spotify-summary');
+    var disc = document.getElementById('btn-spotify-disconnect');
+    if(spotifyConnected()){
+      summary.textContent = spotifyOffline
+        ? 'Connected — offline, deep links only'
+        : 'Connected — remote control active';
+      disc.style.display = '';
+    } else {
+      summary.textContent = 'Not connected — ♫ deep links still work';
+      disc.style.display = 'none';
+    }
+  }
+
+  function base64UrlEncode(bytes){
+    var bin = '';
+    for(var i=0; i<bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+
+  function pkceBegin(){
+    var clientId = document.getElementById('spotify-client-id').value.trim();
+    if(!clientId){ alert('Paste your Spotify app Client ID first.'); return; }
+    if(!(window.crypto && crypto.getRandomValues && crypto.subtle && crypto.subtle.digest && window.TextEncoder)){
+      alert("This browser doesn't support the secure crypto needed for Spotify login.");
+      return;
+    }
+    spotifyAuth.clientId = clientId;
+    saveSpotifyAuth();
+    var redirectUri = getSpotifyRedirectUri();
+    var rnd = new Uint8Array(48);
+    crypto.getRandomValues(rnd);
+    var verifier = base64UrlEncode(rnd);
+    var stateRnd = new Uint8Array(12);
+    crypto.getRandomValues(stateRnd);
+    var state = base64UrlEncode(stateRnd);
+    try{ localStorage.setItem(SPOTIFY_PKCE_KEY, JSON.stringify({verifier:verifier, state:state, redirectUri:redirectUri, createdAt:Date.now()})); }catch(e){}
+    crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)).then(function(hash){
+      var challenge = base64UrlEncode(new Uint8Array(hash));
+      var url = 'https://accounts.spotify.com/authorize' +
+        '?client_id=' + encodeURIComponent(clientId) +
+        '&response_type=code' +
+        '&redirect_uri=' + encodeURIComponent(redirectUri) +
+        '&code_challenge_method=S256' +
+        '&code_challenge=' + challenge +
+        '&scope=' + encodeURIComponent('user-modify-playback-state user-read-playback-state playlist-read-private playlist-read-collaborative') +
+        '&state=' + state +
+        '&show_dialog=true';   // force re-approval — without this, Spotify can silently
+                               // reuse an older grant that predates newly added scopes
+      if(IS_HOSTED){
+        // Spotify will send the browser straight back to this page with ?code=…
+        location.assign(url);
+      } else {
+        document.getElementById('spotify-finish-box').style.display = '';
+        window.open(url, '_blank');
+      }
+    }).catch(function(){
+      alert("Couldn't start the Spotify login (secure crypto unavailable in this browser).");
+    });
+  }
+
+  // Shared exchange step for both modes: manual paste-back and auto-redirect.
+  function pkceExchange(code, stateFromResponse){
+    var pkce = null;
+    try{ pkce = JSON.parse(localStorage.getItem(SPOTIFY_PKCE_KEY)||'null'); }catch(e){}
+    if(!pkce || !pkce.verifier){ alert('No login in progress — press "Connect Spotify" first.'); return; }
+    if(stateFromResponse && pkce.state && stateFromResponse !== pkce.state){
+      alert("That login response doesn't match this session. Press \"Connect Spotify\" and try again.");
+      return;
+    }
+    spotifyTokenRequest({
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: pkce.redirectUri || getSpotifyRedirectUri(),
+      client_id: spotifyAuth.clientId,
+      code_verifier: pkce.verifier
+    }).then(function(){
+      try{ localStorage.removeItem(SPOTIFY_PKCE_KEY); }catch(e){}
+      document.getElementById('spotify-finish-box').style.display = 'none';
+      document.getElementById('spotify-code-input').value = '';
+      spotifyOffline = false;
+      updateSpotifyStatus();
+      alert('Spotify connected. Link tracks with the ♫ button and the timer will drive playback.');
+    }).catch(function(){
+      alert('Spotify rejected the code (it may have expired). Press "Connect Spotify" and try again.');
+    });
+  }
+
+  function pkceFinish(){
+    var pasted = document.getElementById('spotify-code-input').value.trim();
+    if(!pasted){ alert('Paste the address you copied first.'); return; }
+    var code = '';
+    var m = pasted.match(/[?&]code=([^&\s]+)/);
+    if(m) code = decodeURIComponent(m[1]);
+    else if(/^[A-Za-z0-9_\-]+$/.test(pasted)) code = pasted;
+    if(!code){ alert("Couldn't find a code in that text. Copy the whole address from the address bar."); return; }
+    var sm = pasted.match(/[?&]state=([^&\s]+)/);
+    pkceExchange(code, sm ? decodeURIComponent(sm[1]) : '');
+  }
+
+  // Hosted mode: after approving on accounts.spotify.com the browser lands
+  // back here with ?code=… — finish silently and clean the address bar.
+  function maybeFinishSpotifyRedirect(){
+    if(!IS_HOSTED || !location.search) return;
+    var search = location.search;   // capture before replaceState clears it
+    var em = search.match(/[?&]error=([^&]+)/);
+    var cm = search.match(/[?&]code=([^&]+)/);
+    if(!em && !cm) return;
+    try{ history.replaceState(null, '', location.pathname); }catch(e){}
+    if(em){
+      alert('Spotify login was cancelled or refused (' + decodeURIComponent(em[1]) + ').');
+      return;
+    }
+    var pkce = null;
+    try{ pkce = JSON.parse(localStorage.getItem(SPOTIFY_PKCE_KEY)||'null'); }catch(e){}
+    if(!pkce || !pkce.verifier) return;   // stale ?code from elsewhere — ignore quietly
+    var sm = search.match(/[?&]state=([^&]+)/);
+    pkceExchange(decodeURIComponent(cm[1]), sm ? decodeURIComponent(sm[1]) : '');
+  }
+
+  function formEncode(obj){
+    var parts = [];
+    Object.keys(obj).forEach(function(k){
+      parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(obj[k]));
+    });
+    return parts.join('&');
+  }
+
+  function spotifyTokenRequest(params){
+    return fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: formEncode(params)
+    }).then(function(res){
+      if(!res.ok) throw new Error('token http ' + res.status);
+      return res.json();
+    }).then(function(data){
+      spotifyAuth.accessToken = data.access_token;
+      spotifyAuth.accessTokenExpiresAt = Date.now() + (data.expires_in||3600)*1000 - 60000;
+      if(data.refresh_token) spotifyAuth.refreshToken = data.refresh_token;  // Spotify rotates these
+      saveSpotifyAuth();
+      return data;
+    });
+  }
+
+  function getAccessToken(){
+    if(spotifyAuth.accessToken && spotifyAuth.accessTokenExpiresAt > Date.now()){
+      return Promise.resolve(spotifyAuth.accessToken);
+    }
+    if(!spotifyAuth.refreshToken || !spotifyAuth.clientId){
+      return Promise.reject(new Error('not connected'));
+    }
+    return spotifyTokenRequest({
+      grant_type: 'refresh_token',
+      refresh_token: spotifyAuth.refreshToken,
+      client_id: spotifyAuth.clientId
+    }).then(function(){
+      return spotifyAuth.accessToken;
+    }).catch(function(err){
+      if(String(err && err.message).indexOf('token http 4') === 0){
+        // Refresh token rejected → truly disconnected
+        spotifyAuth.accessToken = '';
+        spotifyAuth.refreshToken = '';
+        saveSpotifyAuth();
+      } else {
+        spotifyOffline = true;  // network problem — keep tokens, degrade
+      }
+      updateSpotifyStatus();
+      throw err;
+    });
+  }
+
+  // isPlayerCall: only /v1/me/player/* endpoints should trigger the "no active
+  // device" alert on 404 — a 404 from a playlist/track lookup means something
+  // else entirely (bad id, or Spotify blocking that resource).
+  function spotifyApi(method, path, body, isRetry, isPlayerCall){
+    if(spotifyOffline) return Promise.reject(new Error('offline'));
+    return getAccessToken().then(function(token){
+      var opts = {method: method, headers: {'Authorization': 'Bearer ' + token}};
+      if(body !== undefined && body !== null){
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+      }
+      return fetch('https://api.spotify.com' + path, opts);
+    }).then(function(res){
+      if(res.status === 401 && !isRetry){
+        spotifyAuth.accessToken = '';
+        saveSpotifyAuth();
+        return spotifyApi(method, path, body, true, isPlayerCall);
+      }
+      if(res.status === 404 && isPlayerCall){
+        if(!spotifyDeviceAlerted){
+          spotifyDeviceAlerted = true;
+          alert('Spotify has no active device. Open the Spotify app, play and pause any song once, then press Start again.');
+        }
+        throw new Error('no device');
+      }
+      if(!res.ok && res.status !== 204){
+        return res.json().catch(function(){ return null; }).then(function(errBody){
+          var reason = (errBody && errBody.error && errBody.error.message) || ('HTTP ' + res.status);
+          var e = new Error('spotify http ' + res.status + ': ' + reason);
+          e.status = res.status;
+          throw e;
+        });
+      }
+      return res;
+    }).catch(function(err){
+      if(err instanceof TypeError){
+        spotifyOffline = true;   // network failure mid-class → degrade quietly
+        updateSpotifyStatus();
+      }
+      throw err;
+    });
+  }
+
+  // 'local' beats 'spotify'; 'none' means manual deep links only
+  function getPlaybackMode(track){
+    if(!track) return 'none';
+    if(audioObjects[track.id]) return 'local';
+    if(track.spotifyUri && track.spotifyUri.indexOf('spotify:track:') === 0 &&
+       spotifyConnected() && !spotifyOffline) return 'spotify';
+    return 'none';
+  }
+
+  function spotifyApiJson(method, path){
+    return spotifyApi(method, path, null).then(function(res){
+      if(res.status === 204) return null;
+      return res.json();
+    });
+  }
+
+  function spotifyPlayTrack(uri, positionMs){
+    spotifyStartedPlayback = true;
+    spotifyApi('PUT', '/v1/me/player/play', {uris:[uri], position_ms: Math.max(0, Math.floor(positionMs||0))}, false, true)
+      .catch(function(){});
+  }
+
+  function spotifyPause(){
+    if(!spotifyStartedPlayback) return;
+    spotifyStartedPlayback = false;
+    spotifyApi('PUT', '/v1/me/player/pause', null, false, true).catch(function(){});
+  }
+
+  // Gentle re-sync: every 20s on a Spotify-driven track, nudge the timer to the
+  // app's actual position if they've drifted >2s. Never polls more often (rate limits).
+  function maybeSyncToSpotify(){
+    if(!running || !spotifyStartedPlayback || spotifyOffline) return;
+    if(Date.now() - lastSpotifySync < 20000) return;
+    var info = getCurrentTrackInfo();
+    if(!info || getPlaybackMode(info.track) !== 'spotify') return;
+    lastSpotifySync = Date.now();
+    spotifyApi('GET', '/v1/me/player', null, false, true).then(function(res){
+      if(res.status === 204) return null;
+      return res.json();
+    }).then(function(data){
+      if(!data || !data.is_playing || !data.item) return;
+      var cur = getCurrentTrackInfo();
+      if(!cur || data.item.uri !== cur.track.spotifyUri) return;
+      var expectedMs = cur.trackElapsed * 1000;
+      if(Math.abs((data.progress_ms||0) - expectedMs) > 2000){
+        setElapsed(getTrackBoundaries()[cur.index].start + Math.floor((data.progress_ms||0)/1000));
+      }
+    }).catch(function(){});
+  }
+
+  // Fill a track's blank name (and its duration — user just linked this song)
+  // from Spotify. Web API when connected; open.spotify.com/oembed (title only,
+  // CORS-open) as the unauthenticated fallback. All failures are silent.
+  function fillTrackMetaFromSpotify(track, uri){
+    if(uri.indexOf('spotify:track:') !== 0) return;
+    function apply(name, ms){
+      var changed = false;
+      if(name && !track.name){ track.name = name; changed = true; }
+      if(ms){
+        var dur = formatTime(Math.round(ms/1000));
+        if(track.duration !== dur){ setTrackDuration(track, dur); changed = true; }
+      }
+      if(changed){
+        saveCurrentDataIntoProfile();
+        renderCueList();   // duration shift may have moved later cues
+        renderTrackList();
+      }
+    }
+    function viaOembed(){
+      fetch('https://open.spotify.com/oembed?url=' + encodeURIComponent(spotifyWebUrl(uri)))
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if(d && d.title) apply(d.title, null); })
+        .catch(function(){});
+    }
+    if(spotifyConnected() && !spotifyOffline){
+      spotifyApiJson('GET', '/v1/tracks/' + uri.split(':')[2]).then(function(data){
+        if(data && data.name) apply(data.name, data.duration_ms);
+        else viaOembed();
+      }).catch(viaOembed);
+    } else {
+      viaOembed();
+    }
+  }
+
+  // ── Spotify playlist browse / import ───────────────────────────────────────
+  // Requires the Web API connection (and the playlist-read scopes — users who
+  // connected before this feature must Disconnect/Connect once to re-grant).
+
+  var spimpTracks = [];        // parsed tracks of the playlist being viewed
+  var spimpPlaylistName = '';
+
+  function spimpEls(){
+    return {
+      modal: document.getElementById('spimp-modal'),
+      list:  document.getElementById('spimp-list'),
+      hint:  document.getElementById('spimp-hint'),
+      back:  document.getElementById('spimp-back'),
+      actions: document.getElementById('spimp-playlist-actions')
+    };
+  }
+
+  function openSpotifyImport(){
+    if(!spotifyConnected()){
+      alert('Connect Spotify first — see the "Spotify remote (optional)" section at the bottom of the page.');
+      return;
+    }
+    spotifyOffline = false;   // fresh attempt
+    document.getElementById('spimp-search').value = '';
+    spimpEls().modal.classList.add('open');
+    spimpShowPlaylists();
+  }
+
+  function closeSpotifyImport(){
+    spimpEls().modal.classList.remove('open');
+  }
+
+  function spimpFail(err){
+    var els = spimpEls();
+    els.list.innerHTML = '';
+    var raw = String((err && err.message) || err);
+    var reason = raw.replace(/^spotify http \d+:\s*/, '');
+    if(raw.indexOf('403') !== -1){
+      if(/scope/i.test(reason)){
+        els.hint.textContent = 'Spotify says: "' + reason + '" — this connection is missing playlist access. ' +
+          'Disconnecting in this app doesn\'t undo the approval on Spotify\'s side, so reconnecting alone can reuse the old grant. ' +
+          'On a computer, open spotify.com/account/apps, remove this app from the list, then come back here and Connect again — ' +
+          'you should see a fresh approval screen listing playlist access.';
+      } else {
+        els.hint.textContent = 'Spotify blocked this request: "' + reason + '". Spotify\'s own curated playlists ' +
+          '(Discover Weekly, Daily Mix, Release Radar, etc.) can\'t be read by any app — try one of your own playlists. ' +
+          'If this happens on every playlist, revoke the app at spotify.com/account/apps and reconnect.';
+      }
+    } else {
+      els.hint.textContent = "Couldn't reach Spotify (" + reason + ") — check you're online and try again.";
+    }
+  }
+
+  function spimpShowPlaylists(){
+    var els = spimpEls();
+    els.back.style.display = 'none';
+    els.actions.style.display = 'none';
+    els.list.innerHTML = '';
+    els.hint.textContent = 'Loading your playlists…';
+    var playlists = [];
+
+    function render(truncated){
+      els.list.innerHTML = '';
+      if(!playlists.length){
+        els.hint.textContent = 'No playlists found. You can still search songs above.';
+        return;
+      }
+      els.hint.textContent = 'Tap a playlist to see its songs, or search above to add single songs.' +
+        (truncated ? ' (Showing your first 200 playlists.)' : '');
+      playlists.forEach(function(pl){
+        var btn = document.createElement('button');
+        btn.className = 'spimp-item';
+        btn.textContent = pl.name || 'Untitled playlist';
+        var sub = document.createElement('span');
+        sub.className = 'spimp-sub';
+        sub.textContent = (pl.tracks && pl.tracks.total != null) ? pl.tracks.total + ' songs' : '';
+        btn.appendChild(sub);
+        btn.addEventListener('click', function(){ spimpShowPlaylistTracks(pl); });
+        els.list.appendChild(btn);
+      });
+    }
+
+    function page(path){
+      spotifyApiJson('GET', path).then(function(data){
+        playlists = playlists.concat((data && data.items) ? data.items.filter(Boolean) : []);
+        if(data && data.next && playlists.length < 200){
+          page(String(data.next).replace('https://api.spotify.com', ''));
+        } else {
+          render(!!(data && data.next));
+        }
+      }).catch(spimpFail);
+    }
+
+    page('/v1/me/playlists?limit=50');
+  }
+
+  function spimpShowPlaylistTracks(pl){
+    var els = spimpEls();
+    els.back.style.display = '';
+    els.actions.style.display = 'none';
+    els.list.innerHTML = '';
+    els.hint.textContent = 'Loading "' + pl.name + '"…';
+    spimpTracks = [];
+    spimpPlaylistName = pl.name || 'playlist';
+
+    function page(path){
+      spotifyApiJson('GET', path).then(function(data){
+        var items = (data && data.items) ? data.items : [];
+        items.forEach(function(it){
+          // Spotify's Feb 2026 API migration renamed /tracks → /items and
+          // moved the track payload from `.track` to `.item`; `.track` is
+          // kept as a fallback for any cached/older response shape.
+          var t = it && (it.item || it.track);
+          if(t && t.uri && t.uri.indexOf('spotify:track:') === 0){
+            spimpTracks.push({name: t.name || '', duration_ms: t.duration_ms || 0, uri: t.uri});
+          }
+        });
+        if(data && data.next && spimpTracks.length < 200){
+          page(String(data.next).replace('https://api.spotify.com', ''));
+        } else {
+          render(data && data.next ? true : false);
+        }
+      }).catch(spimpFail);
+    }
+
+    function render(truncated){
+      els.list.innerHTML = '';
+      if(!spimpTracks.length){
+        els.hint.textContent = 'No importable songs in this playlist (podcast episodes and local-only files are skipped).';
+        return;
+      }
+      els.hint.textContent = '"' + spimpPlaylistName + '" — ' + spimpTracks.length + ' songs' +
+        (truncated ? ' (first 200 shown)' : '') + '. Import brings names, durations and Spotify links, plus any saved cues for songs already in your library.';
+      spimpTracks.forEach(function(t, idx){
+        var row = document.createElement('div');
+        row.className = 'spimp-row';
+        var name = document.createElement('span');
+        name.textContent = (idx+1) + '. ' + t.name;
+        var dur = document.createElement('span');
+        dur.className = 'dur';
+        dur.textContent = formatTime(Math.round(t.duration_ms/1000));
+        row.appendChild(name); row.appendChild(dur);
+        els.list.appendChild(row);
+      });
+      els.actions.style.display = '';
+    }
+
+    page('/v1/playlists/' + pl.id + '/items?limit=50');   // /tracks was removed in Spotify's Feb 2026 migration; max page size is now 50
+  }
+
+  function spimpApplyPlaylist(mode){
+    if(!spimpTracks.length) return;
+    var newTracks = spimpTracks.map(function(t, idx){
+      return {id: Date.now()+idx, name: t.name, duration: formatTime(Math.round(t.duration_ms/1000)), spotifyUri: t.uri};
+    });
+    if(mode === 'replace'){
+      if(tracks.length && !window.confirm('Replace the current setlist (' + tracks.length + ' tracks) with "' + spimpPlaylistName + '"? Cues are kept.')) return;
+      tracks.forEach(removeTrackAudio);   // detach any local audio of replaced tracks
+      tracks = newTracks;
+    } else {
+      tracks = tracks.concat(newTracks);
+    }
+    saveCurrentDataIntoProfile();
+    renderTrackList();
+    updateCurrentCueDisplay();
+    setTracksOpen(true);
+    closeSpotifyImport();
+    var added = fillCuesFromLibrary(newTracks);
+    if(added) alert('Imported ' + newTracks.length + ' track(s) — added ' + added + ' saved cue(s) from your song library.');
+  }
+
+  function spimpSearch(){
+    var q = document.getElementById('spimp-search').value.trim();
+    if(!q) return;
+    var els = spimpEls();
+    els.back.style.display = '';
+    els.actions.style.display = 'none';
+    els.list.innerHTML = '';
+    els.hint.textContent = 'Searching…';
+    spotifyApiJson('GET', '/v1/search?type=track&limit=20&q=' + encodeURIComponent(q)).then(function(data){
+      els.list.innerHTML = '';
+      var items = (data && data.tracks && data.tracks.items) ? data.tracks.items : [];
+      if(!items.length){
+        els.hint.textContent = 'No songs found for "' + q + '".';
+        return;
+      }
+      els.hint.textContent = 'Tap a song to add it to the end of the setlist.';
+      items.forEach(function(t){
+        var btn = document.createElement('button');
+        btn.className = 'spimp-item';
+        btn.textContent = t.name;
+        var sub = document.createElement('span');
+        sub.className = 'spimp-sub';
+        var artists = (t.artists||[]).map(function(a){ return a.name; }).join(', ');
+        sub.textContent = artists + ' · ' + formatTime(Math.round((t.duration_ms||0)/1000));
+        btn.appendChild(sub);
+        btn.addEventListener('click', function(){
+          var newTrack = {id: Date.now(), name: t.name, duration: formatTime(Math.round((t.duration_ms||0)/1000)), spotifyUri: t.uri};
+          tracks.push(newTrack);
+          saveCurrentDataIntoProfile();
+          renderTrackList();
+          updateCurrentCueDisplay();
+          setTracksOpen(true);
+          var added = fillCuesFromLibrary([newTrack]);
+          els.hint.textContent = 'Added "' + t.name + '"' + (added ? ' + ' + added + ' saved cue(s)' : '') + ' to the setlist. Tap more songs, or Close.';
+        });
+        els.list.appendChild(btn);
+      });
+    }).catch(spimpFail);
+  }
+
+  // ── Google Sheets link ─────────────────────────────────────────────────────
+  // fetch() of a sheet fails from file:// (Google sends no CORS header for
+  // Origin: null), so the gviz endpoint is loaded as a classic script (JSONP).
+  // Needs only "Anyone with the link → Viewer" sharing, not Publish-to-web.
+
+  var currentSheetUrl = '';
+  var sheetFetchBusy  = false;
+  var currentScriptUrl = '';
+  var currentSheetSecret = '';
+
+  // Source for the Google Apps Script Web App that accepts writes (direct
+  // Sheets API calls are CORS-blocked from file://, same as the CSV/gviz
+  // fetch() dead end — this is the only viable write path). Built with
+  // string concatenation, not a template literal, to stay ES5. Shown
+  // read-only/copyable in the Import modal so the whole setup is
+  // self-contained in this one file.
+  var APPS_SCRIPT_SOURCE = [
+    '// Paste into Extensions > Apps Script for this Google Sheet, then',
+    '// Deploy > New deployment > type: Web app > Execute as: Me > Who has access: Anyone.',
+    '// Copy the resulting /exec URL into the Cycling Cue Timer app.',
+    '',
+    "var SHEET_SECRET = 'PASTE_THE_SAME_SECRET_FROM_THE_APP_HERE';",
+    '',
+    'function doPost(e) {',
+    '  try {',
+    '    var body = JSON.parse(e.postData.contents);',
+    '    if (body.secret !== SHEET_SECRET) {',
+    "      return ContentService.createTextOutput(JSON.stringify({ok:false, error:'Wrong shared secret'}))",
+    '        .setMimeType(ContentService.MimeType.JSON);',
+    '    }',
+    '    // Write to the tab the app linked (by gid); fall back to the first tab.',
+    '    var ss = SpreadsheetApp.getActiveSpreadsheet();',
+    '    var sheet = null;',
+    "    if (body.gid !== undefined && body.gid !== null && body.gid !== '') {",
+    '      var all = ss.getSheets();',
+    '      for (var i = 0; i < all.length; i++) {',
+    '        if (String(all[i].getSheetId()) === String(body.gid)) { sheet = all[i]; break; }',
+    '      }',
+    '    }',
+    '    if (!sheet) sheet = ss.getSheets()[0];',
+    '    sheet.clearContents();',
+    '    if (body.rows && body.rows.length) {',
+    '      sheet.getRange(1, 1, body.rows.length, body.rows[0].length).setValues(body.rows);',
+    '    }',
+    '    return ContentService.createTextOutput(JSON.stringify({ok:true, rows: body.rows ? body.rows.length : 0}))',
+    '      .setMimeType(ContentService.MimeType.JSON);',
+    '  } catch (err) {',
+    '    return ContentService.createTextOutput(JSON.stringify({ok:false, error: String(err)}))',
+    '      .setMimeType(ContentService.MimeType.JSON);',
+    '  }',
+    '}',
+    '',
+    'function doGet(e) {',
+    "  return ContentService.createTextOutput(JSON.stringify({ok:true, message:'Cycling Cue Timer sync endpoint is running.'}))",
+    '    .setMimeType(ContentService.MimeType.JSON);',
+    '}'
+  ].join('\n');
+
+  var PUBLISHED_LINK_MSG = 'That\'s a "published to web" link, which won\'t work here. ' +
+    'Paste the normal address-bar URL of the sheet instead (docs.google.com/spreadsheets/d/…) ' +
+    'and set Share → Anyone with the link → Viewer.';
+
+  function getSheetRef(url){
+    url = String(url||'').trim();
+    if(!url) return null;
+    var m = url.match(/\/spreadsheets\/d\/(e\/)?([a-zA-Z0-9\-_]+)/);
+    if(!m) return null;
+    if(m[1]) return {published:true};
+    var g = url.match(/[#?&]gid=(\d+)/);
+    return {id:m[2], gid: g ? g[1] : null};
+  }
+
+  function fetchSheet(id, gid, onOk, onErr){
+    if(sheetFetchBusy) return;
+    sheetFetchBusy = true;
+    var finished = false, script = null, timer = null;
+    function cleanup(){
+      sheetFetchBusy = false;
+      if(timer) clearTimeout(timer);
+      if(script && script.parentNode) script.parentNode.removeChild(script);
+      window.cueSheetJsonpCb = undefined;
+    }
+    function fail(msg){
+      if(finished) return;
+      finished = true; cleanup(); onErr(msg);
+    }
+    window.cueSheetJsonpCb = function(resp){
+      if(finished) return;
+      finished = true; cleanup();
+      if(!resp || resp.status === 'error'){
+        onErr('Google Sheets reported an error — check that the link points to the right sheet and tab.');
+        return;
+      }
+      onOk(resp);
+    };
+    script = document.createElement('script');
+    script.src = 'https://docs.google.com/spreadsheets/d/' + encodeURIComponent(id) +
+                 '/gviz/tq?tqx=out:json;responseHandler:cueSheetJsonpCb' +
+                 (gid ? '&gid=' + encodeURIComponent(gid) : '');
+    script.onerror = function(){
+      fail('Couldn\'t load the sheet. Check you\'re online and the sheet is shared as "Anyone with the link — Viewer". Keeping the saved cues.');
+    };
+    timer = setTimeout(function(){ fail('Couldn\'t reach Google Sheets (timed out). Keeping the saved cues.'); }, 20000);
+    document.body.appendChild(script);
+  }
+
+  function gvizTableToTSV(table){
+    if(!table || !table.cols) return '';
+    function clean(s){ return String(s).replace(/[\t\r\n]+/g,' ').trim(); }
+    function cellText(cell, colType){
+      if(!cell) return '';
+      if(colType === 'timeofday' && cell.v && cell.v.length){
+        return formatTime((cell.v[0]||0)*3600 + (cell.v[1]||0)*60 + (cell.v[2]||0));
+      }
+      if(cell.f !== undefined && cell.f !== null) return clean(cell.f);
+      if(cell.v !== undefined && cell.v !== null) return clean(cell.v);
+      return '';
+    }
+    var headers = table.cols.map(function(c){ return clean(c.label||''); });
+    var rows = table.rows || [];
+    var startRow = 0;
+    if(headers.every(function(h){ return !h; }) && rows.length){
+      // gviz didn't detect a header row — use the first data row as headers
+      headers = (rows[0].c||[]).map(function(cell,i){
+        return cellText(cell, table.cols[i] ? table.cols[i].type : '');
+      });
+      startRow = 1;
+    }
+    var lines = [headers.join('\t')];
+    for(var i=startRow; i<rows.length; i++){
+      var c = rows[i].c || [];
+      var cells = [];
+      for(var j=0; j<table.cols.length; j++){
+        cells.push(cellText(c[j], table.cols[j].type));
+      }
+      lines.push(cells.join('\t'));
+    }
+    return lines.join('\n');
+  }
+
+  function updateSheetRefreshButton(){
+    document.getElementById('btn-sheet-refresh').style.display = currentSheetUrl ? '' : 'none';
+  }
+
+  function setSheetUrl(url){
+    url = String(url||'').trim();
+    currentSheetUrl = url;
+    if(!profiles[currentProfile] || Array.isArray(profiles[currentProfile])){
+      saveCurrentDataIntoProfile();   // upgrades old-format profiles to objects
+    }
+    if(url) profiles[currentProfile].sheetUrl = url;
+    else delete profiles[currentProfile].sheetUrl;
+    saveProfiles();
+    updateSheetRefreshButton();
+  }
+
+  function refreshFromSheet(){
+    var ref = getSheetRef(currentSheetUrl);
+    if(!ref){ alert('The saved sheet link doesn\'t look like a Google Sheets URL. Edit it via ↓ Import.'); return; }
+    if(ref.published){ alert(PUBLISHED_LINK_MSG); return; }
+    var msg = 'Replace all cues in "' + currentProfile + '" from the linked sheet? Manual edits will be lost.';
+    if(running) msg = 'The class timer is running. ' + msg;
+    if(!window.confirm(msg)) return;
+
+    var btn = document.getElementById('btn-sheet-refresh');
+    btn.disabled = true;
+    btn.textContent = '⟳ Loading…';
+    function done(flash){
+      btn.disabled = false;
+      btn.textContent = flash || '⟳ Sheet';
+      if(flash) setTimeout(function(){ btn.textContent = '⟳ Sheet'; }, 2500);
+    }
+    fetchSheet(ref.id, ref.gid, function(resp){
+      var result = parseImportData(gvizTableToTSV(resp.table));
+      if(result.error){ done(); alert(result.error); return; }
+      if(!result.cues.length){ done(); alert('No cue rows found in the sheet. Keeping the saved cues.'); return; }
+      applyImportResult(result, 'replace');
+      done('✓ Updated');
+    }, function(errMsg){
+      done();
+      alert(errMsg);
+    });
+  }
+
+  // ── Google Sheets export (two-way sync via Apps Script) ────────────────────
+  // Writing needs the Apps Script Web App (see APPS_SCRIPT_SOURCE above);
+  // reading still goes through the existing gviz path above, untouched.
+
+  function updateSheetExportButton(){
+    document.getElementById('btn-sheet-export').style.display =
+      (currentScriptUrl && currentSheetSecret) ? '' : 'none';
+  }
+
+  function setSheetSync(scriptUrl, secret){
+    scriptUrl = String(scriptUrl||'').trim();
+    secret = String(secret||'').trim();
+    currentScriptUrl = scriptUrl;
+    currentSheetSecret = secret;
+    if(!profiles[currentProfile] || Array.isArray(profiles[currentProfile])){
+      saveCurrentDataIntoProfile();   // upgrades old-format profiles to objects
+    }
+    if(scriptUrl) profiles[currentProfile].scriptUrl = scriptUrl; else delete profiles[currentProfile].scriptUrl;
+    if(secret) profiles[currentProfile].sheetSecret = secret; else delete profiles[currentProfile].sheetSecret;
+    saveProfiles();
+    updateSheetExportButton();
+  }
+
+  // Bucket cues into whichever track they belong to (mirrors
+  // getCurrentTrackInfo()'s own rule: a cue at/after a track's start belongs
+  // to it, and anything past the last track's declared duration still counts
+  // as that last track). Emits the same column shape parseImportData() reads,
+  // so export → import round-trips losslessly. A music-only track with no
+  // cues still gets one row (Track/Duration/Spotify only) so it isn't lost;
+  // parseImportData() knows to register the track without inventing a cue.
+  function buildSheetRows(){
+    var header = ['Time','Cue','Position','Tempo','Track','Duration','BPM','Spotify'];
+    var rows = [header];
+
+    if(!tracks.length){
+      cues.forEach(function(c){
+        rows.push([c.time||'', c.text||'', c.position||'', c.tempo||'', '', '', '', '']);
+      });
+      return rows;
+    }
+
+    var bounds = getTrackBoundaries();
+    function trackIndexForTime(t){
+      var idx = 0;
+      for(var i=0; i<bounds.length; i++){
+        if(bounds[i].start <= t) idx = i; else break;
+      }
+      return idx;
+    }
+    var buckets = tracks.map(function(){ return []; });
+    cues.forEach(function(c){
+      buckets[trackIndexForTime(parseTime(c.time))].push(c);
+    });
+
+    tracks.forEach(function(track, i){
+      var trackCues = buckets[i];
+      var start = bounds[i].start;
+      if(!trackCues.length){
+        rows.push(['', '', '', '', track.name||'', track.duration||'', track.bpm||'', track.spotifyUri||'']);
+        return;
+      }
+      trackCues.forEach(function(c, j){
+        var relTime = formatTime(Math.max(0, parseTime(c.time) - start));
+        rows.push([
+          relTime, c.text||'', c.position||'', c.tempo||'',
+          j===0 ? (track.name||'') : '',
+          j===0 ? (track.duration||'') : '',
+          j===0 ? (track.bpm||'') : '',
+          j===0 ? (track.spotifyUri||'') : ''
+        ]);
+      });
+    });
+    return rows;
+  }
+
+  function exportCuesToSheet(){
+    if(!currentScriptUrl || !currentSheetSecret){
+      alert('Set up two-way sync first — see "Enable two-way sync" in the ↓ Import modal.');
+      return;
+    }
+    var msg = 'Push this class\'s ' + cues.length + ' cue(s) and ' + tracks.length + ' track(s) to the linked sheet?\n\n' +
+      'This replaces whatever is currently in the sheet.';
+    if(!window.confirm(msg)) return;
+
+    var rows = buildSheetRows();
+    // Target the same tab the ⟳ read path uses (older deployed scripts ignore
+    // the gid field and keep writing to the first tab)
+    var linkedRef = getSheetRef(currentSheetUrl);
+    var linkedGid = (linkedRef && linkedRef.gid) ? linkedRef.gid : '';
+    var btn = document.getElementById('btn-sheet-export');
+    btn.disabled = true;
+    btn.textContent = '⇧ Sending…';
+    function done(flash){
+      btn.disabled = false;
+      btn.textContent = flash || '⇧ Export';
+      if(flash) setTimeout(function(){ btn.textContent = '⇧ Export'; }, 2500);
+    }
+    fetch(currentScriptUrl, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},   // avoids a CORS preflight
+      body: JSON.stringify({secret: currentSheetSecret, rows: rows, gid: linkedGid})
+    }).then(function(res){
+      return res.json().catch(function(){ return null; });
+    }).then(function(data){
+      if(data && data.ok){
+        done('✓ Sent');
+      } else if(data && data.error){
+        done();
+        alert('The sheet rejected the export: ' + data.error + '\n\nCheck the shared secret matches what\'s in the Apps Script (and that you deployed a new version after editing it).');
+      } else {
+        done();
+        alert('Sent, but couldn\'t confirm it was received — check the sheet manually.');
+      }
+    }).catch(function(err){
+      done();
+      alert('Couldn\'t reach the Apps Script — check you\'re online and the URL is correct.\n\n' + err.message);
+    });
+  }
+
+  // ── Event listeners ────────────────────────────────────────────────────────
+
+  document.getElementById('btn-startpause').addEventListener('click', startPause);
+  document.getElementById('btn-reset').addEventListener('click', resetTimer);
+  document.getElementById('btn-prev-track').addEventListener('click', function(){ skipTrack(-1); });
+  document.getElementById('btn-next-track').addEventListener('click', function(){ skipTrack(1); });
+  document.getElementById('now-spotify').addEventListener('click', function(){
+    if(nowSpotifyTrack) openSpotify(nowSpotifyTrack.spotifyUri, nowSpotifyTrack.name);
+  });
+  document.getElementById('now-bpm').addEventListener('click', function(){
+    if(nowSpotifyTrack) openBpmModal(nowSpotifyTrack);
+  });
+  document.getElementById('bpm-tap').addEventListener('click', bpmTap);
+  document.getElementById('bpm-input').addEventListener('input', updateBpmCadences);
+  document.getElementById('bpm-cancel').addEventListener('click', closeBpmModal);
+  document.getElementById('bpm-save').addEventListener('click', function(){
+    if(!bpmModalTrack){ closeBpmModal(); return; }
+    var raw = document.getElementById('bpm-input').value.trim();
+    var v = Math.round(Number(raw));
+    if(raw !== '' && !(v > 0 && v < 300)){ alert('BPM should be a number between 1 and 299 (or blank to clear).'); return; }
+    setTrackBpm(bpmModalTrack, raw === '' ? 0 : v);
+    closeBpmModal();
+  });
+  document.getElementById('bpm-analyze').addEventListener('click', function(){
+    if(!bpmModalTrack) return;
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = '🎵 Listening…';
+    function done(){ btn.disabled = false; btn.textContent = '🎵 Detect from the loaded audio file'; }
+    analyzeBpmFromTrack(bpmModalTrack, function(bpm){
+      done();
+      document.getElementById('bpm-input').value = bpm;
+      updateBpmCadences();
+      document.getElementById('bpm-tap-hint').textContent = 'Detected ' + bpm + ' bpm from the audio. Adjust or TAP if it sounds off, then Save.';
+    }, function(errMsg){
+      done();
+      document.getElementById('bpm-tap-hint').textContent = errMsg;
+    });
+  });
+  document.getElementById('bpm-listen').addEventListener('click', function(){
+    var btn = this;
+    var hint = document.getElementById('bpm-tap-hint');
+    if(micListenHandle){   // second tap = cancel
+      stopMicListen();
+      hint.textContent = 'Stopped listening.';
+      return;
+    }
+    hint.textContent = 'Starting the microphone…';
+    btn.textContent = '⏹ Stop listening';
+    micListenHandle = listenBpmFromMic(function(progress){
+      hint.textContent = 'Listening to the music… ' + Math.round(progress*100) + '%';
+    }, function(bpm){
+      micListenHandle = null;
+      btn.textContent = '🎤 Listen to the song playing';
+      document.getElementById('bpm-input').value = bpm;
+      updateBpmCadences();
+      hint.textContent = 'Heard ' + bpm + ' bpm. Adjust or TAP if it sounds off, then Save.';
+    }, function(errMsg){
+      micListenHandle = null;
+      btn.textContent = '🎤 Listen to the song playing';
+      hint.textContent = errMsg;
+    });
+  });
+  document.getElementById('bpm-modal').addEventListener('click', function(e){
+    if(e.target === this) closeBpmModal();
+  });
+  // Wake locks are auto-released when the tab hides; re-acquire on return
+  document.addEventListener('visibilitychange', updateWakeLock);
+  document.getElementById('btn-screen').addEventListener('click', function(){
+    keepScreenOn = !keepScreenOn;
+    try{ localStorage.setItem(SCREEN_ON_KEY, keepScreenOn ? '1' : '0'); }catch(e){}
+    updateScreenButton();
+    updateWakeLock();
+  });
+  document.getElementById('btn-add').addEventListener('click', addCue);
+  document.getElementById('btn-sound').addEventListener('click', function(){
+    soundOn = !soundOn;
+    this.textContent = soundOn ? '🔔' : '🔕';
+  });
+
+  document.getElementById('btn-capture').addEventListener('click', function(){
+    setCaptureOpen(!captureOpen);
+  });
+  document.getElementById('btn-mark').addEventListener('click', function(){ captureCue(null); });
+  document.getElementById('btn-nudge-back').addEventListener('click', function(){ nudgeLastCue(-2); });
+  document.getElementById('btn-nudge-fwd').addEventListener('click', function(){ nudgeLastCue(2); });
+  document.getElementById('btn-edit-presets').addEventListener('click', openPresetModal);
+  document.getElementById('btn-add-preset').addEventListener('click', function(){
+    presets.push({id:Date.now(), name:'New preset', position:'', tempo:''});
+    savePresets();
+    renderPresetEditor();
+  });
+  document.getElementById('btn-preset-done').addEventListener('click', closePresetModal);
+  document.getElementById('preset-modal').addEventListener('click', function(e){
+    if(e.target === this) closePresetModal();
+  });
+
+  // ✕ buttons that empty their long-string input
+  document.querySelectorAll('.inp-clear').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var inp = document.getElementById(btn.getAttribute('data-clears'));
+      inp.value = '';
+      inp.focus();
+    });
+  });
+
+  document.getElementById('btn-import').addEventListener('click', openImportModal);
+  document.getElementById('btn-import-cancel').addEventListener('click', closeImportModal);
+  document.getElementById('btn-import-go').addEventListener('click', doImport);
+  document.getElementById('import-file').addEventListener('change', function(){
+    var file = this.files[0];
+    var inputEl = this;
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      document.getElementById('import-text').value = String(reader.result || '');
+      inputEl.value = '';   // allow re-picking the same file
+    };
+    reader.onerror = function(){ alert("Couldn't read that file."); };
+    reader.readAsText(file);
+  });
+
+  document.getElementById('btn-sheet-refresh').addEventListener('click', refreshFromSheet);
+  document.getElementById('btn-sheet-export').addEventListener('click', exportCuesToSheet);
+  document.getElementById('btn-sheet-save').addEventListener('click', function(){
+    var url = document.getElementById('sheet-url').value.trim();
+    if(url){
+      var ref = getSheetRef(url);
+      if(!ref){ alert('That doesn\'t look like a Google Sheets URL.'); return; }
+      if(ref.published){ alert(PUBLISHED_LINK_MSG); return; }
+    }
+    setSheetUrl(url);
+    closeImportModal();
+    if(url) refreshFromSheet();
+  });
+  document.getElementById('btn-copy-script').addEventListener('click', function(){
+    copyToClipboard(APPS_SCRIPT_SOURCE, this, 'script');
+  });
+  document.getElementById('btn-copy-secret').addEventListener('click', function(){
+    copyToClipboard(document.getElementById('sheet-secret').value, this, 'secret');
+  });
+  document.getElementById('btn-gen-secret').addEventListener('click', function(){
+    document.getElementById('sheet-secret').value = randomSecret();
+  });
+  document.getElementById('btn-sync-save').addEventListener('click', function(){
+    var scriptUrl = document.getElementById('script-url').value.trim();
+    var secret = document.getElementById('sheet-secret').value.trim();
+    if(scriptUrl && !/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(scriptUrl)){
+      if(!window.confirm('That doesn\'t look like an Apps Script /exec URL. Save it anyway?')) return;
+    }
+    setSheetSync(scriptUrl, secret);
+    alert(scriptUrl && secret ? 'Sync settings saved. The ⇧ Export button is now available.' : 'Sync settings cleared.');
+  });
+  document.getElementById('import-modal').addEventListener('click', function(e){
+    if(e.target === this) closeImportModal();
+  });
+
+  function setSpotifySectionOpen(open){
+    spotifyOpenSection = open;
+    document.getElementById('spotify-body').classList.toggle('hidden', !open);
+    document.getElementById('spotify-arrow').classList.toggle('open', open);
+    document.getElementById('spotify-header').setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  document.getElementById('spotify-header').addEventListener('click', function(){
+    setSpotifySectionOpen(!spotifyOpenSection);
+  });
+  document.getElementById('spotify-header').addEventListener('keydown', function(e){
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); setSpotifySectionOpen(!spotifyOpenSection); }
+  });
+  document.getElementById('btn-spotify-connect').addEventListener('click', pkceBegin);
+  document.getElementById('btn-spotify-finish').addEventListener('click', pkceFinish);
+  document.getElementById('btn-spotify-disconnect').addEventListener('click', function(){
+    if(!window.confirm('Disconnect Spotify remote control? (Deep links keep working.)')) return;
+    spotifyAuth.accessToken = '';
+    spotifyAuth.refreshToken = '';
+    spotifyAuth.accessTokenExpiresAt = 0;
+    saveSpotifyAuth();
+    updateSpotifyStatus();
+  });
+  document.getElementById('spotify-client-id').addEventListener('change', function(){
+    spotifyAuth.clientId = this.value.trim();
+    saveSpotifyAuth();
+  });
+
+  document.getElementById('tracks-header').addEventListener('click', function(){
+    setTracksOpen(!tracksOpen);
+  });
+  document.getElementById('tracks-header').addEventListener('keydown', function(e){
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); setTracksOpen(!tracksOpen); }
+  });
+
+  document.getElementById('btn-fill-lib-cues').addEventListener('click', function(){
+    if(!tracks.length){ alert('Add some tracks to the setlist first.'); return; }
+    var n = fillCuesFromLibrary(tracks);
+    if(n) renderTrackList();
+    alert(n ? ('Added ' + n + ' saved cue(s) from your song library.') : 'Nothing new — no saved cues matched these tracks (or they\'re already in this class).');
+  });
+  // Bulk library save — the "rebuild my library on a new phone" move: import a
+  // class from the sheet, then tap this once. Skips songs with no cues in
+  // their range so a template can't be wiped by a class that lacks it.
+  document.getElementById('btn-save-all-lib').addEventListener('click', function(){
+    if(!tracks.length){ alert('Add some tracks to the setlist first.'); return; }
+    if(!window.confirm("Save each song's current cues (and BPM) as its reusable template? Existing templates for these songs are replaced.")) return;
+    var saved = 0, skipped = 0, bpmSaved = false;
+    tracks.forEach(function(t){
+      var key = songKey(t);
+      if(!key){ skipped++; return; }
+      var b = findTrackBounds(t);
+      var hasCues = b && cues.some(function(c){
+        var s = parseTime(c.time);
+        return s >= b.start && s < b.end;
+      });
+      if(hasCues){ saveTrackCuesToLibrary(t); saved++; }
+      else skipped++;
+      if(t.bpm && songBpmMap[key] !== t.bpm){ songBpmMap[key] = t.bpm; bpmSaved = true; }
+    });
+    if(bpmSaved) saveSongBpmMap();
+    renderTrackList();
+    alert('Saved templates for ' + saved + ' song(s)' +
+          (skipped ? ' (skipped ' + skipped + ' with no cues or no name)' : '') + '.');
+  });
+  document.getElementById('btn-spimp-open').addEventListener('click', openSpotifyImport);
+  document.getElementById('spimp-close').addEventListener('click', closeSpotifyImport);
+  document.getElementById('spimp-back').addEventListener('click', spimpShowPlaylists);
+  document.getElementById('spimp-replace').addEventListener('click', function(){ spimpApplyPlaylist('replace'); });
+  document.getElementById('spimp-append').addEventListener('click', function(){ spimpApplyPlaylist('append'); });
+  document.getElementById('spimp-search-btn').addEventListener('click', spimpSearch);
+  document.getElementById('spimp-search').addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); spimpSearch(); }
+  });
+  document.getElementById('spimp-modal').addEventListener('click', function(e){
+    if(e.target === this) closeSpotifyImport();
+  });
+
+  document.getElementById('btn-add-track').addEventListener('click', function(){
+    tracks.push({id:Date.now(), name:'', duration:'3:00'});
+    saveCurrentDataIntoProfile();
+    renderTrackList();
+  });
+
+  document.getElementById('profile-select').addEventListener('change', function(){
+    loadProfile(this.value);
+  });
+  document.getElementById('btn-new-profile').addEventListener('click', function(){
+    var name = window.prompt('Name this class profile (starts as a copy of the current one):', '');
+    if(!name) return;
+    if(profiles[name]){ alert('A profile with that name already exists.'); return; }
+    profiles[name] = {cues:JSON.parse(JSON.stringify(cues)), tracks:JSON.parse(JSON.stringify(tracks))};
+    saveProfiles();
+    // Copy stored audio before loading, so the new profile finds its blobs
+    audioDbCopyProfile(currentProfile, name, function(){
+      populateProfileSelect();
+      loadProfile(name);
+    });
+  });
+  document.getElementById('btn-delete-profile').addEventListener('click', function(){
+    if(Object.keys(profiles).length <= 1){ alert("Can't delete your only profile."); return; }
+    if(!window.confirm('Delete profile "'+currentProfile+'"? This can\'t be undone.')) return;
+    audioDbDeleteProfile(currentProfile);
+    delete profiles[currentProfile];
+    saveProfiles();
+    var remaining = Object.keys(profiles);
+    populateProfileSelect();
+    loadProfile(remaining[0]);
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+
+  function updateScreenButton(){
+    var btn = document.getElementById('btn-screen');
+    btn.textContent = keepScreenOn ? '🔆' : '🌙';
+    btn.setAttribute('aria-pressed', keepScreenOn ? 'true' : 'false');
+    btn.title = keepScreenOn ? 'Screen stays awake — tap to allow sleep' : 'Screen may sleep — tap to keep awake';
+  }
+
+  function init(){
+    loadProfiles();
+    cleanOrphanAudio();
+    loadPresets();
+    renderPresetGrid();
+    loadSongCueLibrary();
+    loadSongBpmMap();
+    try{ keepScreenOn = localStorage.getItem(SCREEN_ON_KEY) !== '0'; }catch(e){}
+    updateScreenButton();
+    updateWakeLock();
+    loadSpotifyAuth();
+    document.getElementById('spotify-client-id').value = spotifyAuth.clientId || '';
+    document.getElementById('spotify-redirect-display').textContent = getSpotifyRedirectUri();
+    document.getElementById('spotify-mode-note').textContent = IS_HOSTED
+      ? 'Hosted mode: after approving on Spotify you land right back here — no copying needed. (If you also use the file-on-phone version, add its redirect URI http://127.0.0.1:8888/callback too.)'
+      : 'Local-file mode: the login ends on a page that can\'t load, and you paste its address back here. (If you also use a hosted version of this app, add its page URL as a second redirect URI.)';
+    updateSpotifyStatus();
+    maybeFinishSpotifyRedirect();
+    var last = '';
+    try{ last = localStorage.getItem(LAST_PROFILE_KEY)||''; }catch(e){}
+    if(!profiles[last]) last = Object.keys(profiles)[0];
+    populateProfileSelect();
+    loadProfile(last);
+  }
+
+  init();
+</script>
+</body>
+</html>
