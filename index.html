@@ -57,8 +57,9 @@
   .bpm-value-row{display:flex;gap:10px;align-items:stretch;margin-bottom:8px;}
   .bpm-value-row input{flex:1;min-width:0;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:11px;font-size:22px;text-align:center;font-family:monospace;}
   .bpm-tap-btn{min-width:110px;font-size:17px;font-weight:700;}
-  .track-info{font-size:12px;color:var(--accent);font-weight:600;margin:0 0 6px;}
+  .track-info{font-size:12px;color:var(--accent);font-weight:600;margin:0 0 6px;cursor:pointer;line-height:1.5;}
   .track-info:empty{display:none;}
+  body.ride-mode .track-info{font-size:16px;}
   .now-meta{margin:0;}
   .badge{display:inline-block;background:var(--surface-2);color:var(--text);font-size:15px;font-weight:600;padding:7px 14px;border-radius:999px;margin-right:8px;margin-bottom:6px;}
   .now-card .badge:empty{display:none;}
@@ -154,6 +155,36 @@
   .modal-actions button{flex:1;padding:12px;}
 
   .sound-toggle{font-size:18px;padding:11px 14px;flex-shrink:0;}
+  .sound-toggle.screen-warn{border-color:#ef5350;background:rgba(239,83,80,0.14);}
+  .sound-toggle.mode-on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
+
+  /* Visual cue alerts — the countdown warms up as the change approaches, and
+     the Now card flashes when it lands (works with the beep off) */
+  .timer-display.soon{color:var(--accent);}
+  .timer-display.imminent{color:var(--accent);animation:cuepulse 0.5s infinite alternate;}
+  @keyframes cuepulse{from{opacity:1;}to{opacity:0.4;}}
+  .now-card.cue-flash{animation:cueflash 0.4s ease-out 3;}
+  @keyframes cueflash{0%{background:var(--accent);border-color:var(--accent);}100%{background:var(--surface);border-color:var(--border);}}
+  @media (prefers-reduced-motion: reduce){
+    .timer-display.imminent{animation:none;}
+    .now-card.cue-flash{animation:none;background:var(--accent-soft);}
+  }
+
+  /* Ride mode — the in-class display: everything that isn't ridden with is
+     hidden, and Now/Next grow to across-the-room sizes */
+  body.ride-mode h1,
+  body.ride-mode .profile-row,
+  body.ride-mode .tracks-section,
+  body.ride-mode #cue-list,
+  body.ride-mode .bottom-row{display:none;}
+  body.ride-mode .timer-display{font-size:92px;}
+  body.ride-mode .timer-next{font-size:16px;}
+  body.ride-mode .timer-next .nbadge{font-size:16px;padding:6px 14px;}
+  body.ride-mode .now-card{padding:22px 20px;text-align:center;}
+  body.ride-mode #current-position{display:block;background:none;padding:0;margin:0 0 10px;border-radius:0;font-size:42px;font-weight:800;line-height:1.15;}
+  body.ride-mode #current-position:empty{display:none;}
+  body.ride-mode #current-load,
+  body.ride-mode #current-tempo{font-size:20px;padding:9px 18px;}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 </style>
 </head>
@@ -178,6 +209,7 @@
       <button id="btn-sound" class="sound-toggle" aria-label="Toggle sound alerts">🔔</button>
       <button id="btn-screen" class="sound-toggle" aria-label="Keep screen awake" aria-pressed="true" title="Keep screen awake">🔆</button>
       <button id="btn-capture" class="sound-toggle" aria-label="Toggle cue capture mode" aria-pressed="false">✎</button>
+      <button id="btn-ride" class="sound-toggle" aria-label="Toggle ride mode (big display, hides editing)" aria-pressed="false">🚴</button>
     </div>
   </div>
 
@@ -221,7 +253,10 @@
       </div>
       <div id="track-list"></div>
       <button class="add-track-btn" id="btn-add-track">+ Add track</button>
+      <button class="add-track-btn" id="btn-load-folder">📁 Load song files from a folder…</button>
+      <input type="file" id="folder-audio-input" class="track-audio-input" webkitdirectory multiple accept="audio/*">
       <button class="add-track-btn" id="btn-spimp-open">♫ Import from Spotify…</button>
+      <button class="add-track-btn" id="btn-spimp-match">♫ Match all songs on Spotify</button>
       <button class="add-track-btn" id="btn-fill-lib-cues">📋 Fill in cues from song library</button>
       <button class="add-track-btn" id="btn-save-all-lib">📋 Save all songs' cues to library</button>
     </div>
@@ -280,6 +315,9 @@
       <input type="number" id="bpm-input" min="40" max="240" step="1" placeholder="bpm" inputmode="numeric">
       <button id="bpm-tap" class="btn-accent bpm-tap-btn">TAP</button>
     </div>
+    <p class="modal-desc" style="margin:10px 0 6px;">Track focus note (shown on the Now card; previews as "Coming up →" near the end of the song before):</p>
+    <input type="text" id="bpm-focus" class="sheet-url-inp" placeholder="e.g. 2x rounds of Strength and Power: 70 and 60 seconds">
+
     <p class="modal-desc" id="bpm-tap-hint"></p>
     <div class="modal-actions" id="bpm-analyze-row" style="display:none">
       <button id="bpm-analyze">🎵 Detect from the loaded audio file</button>
@@ -429,6 +467,9 @@
   var audioQuotaAlerted = false;
   var anchorEpochMs  = 0;    // wall-clock ms corresponding to elapsedSeconds === 0
   var wakeLock       = null;
+  var wakeLockFailed = false;  // last request was rejected (battery saver) or API missing
+  var wakeLockErrMsg = '';     // the phone's actual rejection reason, shown on warn-tap
+  var wakeVideo      = null;   // fallback <video> that holds the screen via media playback
   var SCREEN_ON_KEY  = 'cycleCueScreenOn_v1';
   var keepScreenOn   = true;
   var SONG_CUES_KEY  = 'cycleSongCues_v1';
@@ -437,6 +478,8 @@
   var lastCapturedLibIndex = -1;
   var SONG_BPM_KEY   = 'cycleSongBpm_v1';
   var songBpmMap     = {};   // songKey → bpm (number) — BPM follows songs like cues do
+  var SONG_FOCUS_KEY = 'cycleSongFocus_v1';
+  var songFocusMap   = {};   // songKey → focus note (Les Mills "TRACK FOCUS") — follows songs too
 
   // ── Time utilities ─────────────────────────────────────────────────────────
 
@@ -630,6 +673,120 @@
     audio.preload = 'auto';
     audioObjects[track.id] = audio;
     audioNames[track.id] = fileName || '';
+  }
+
+  // ── Bulk folder loader ─────────────────────────────────────────────────────
+  // One picker tap wires up a whole class: pick the folder with the class's
+  // music (webkitdirectory — works on Chrome for Android 150+; on browsers
+  // without folder pickers the same input degrades to a multi-file picker)
+  // and every file whose name matches a track name is attached like a ♪ pick.
+
+  var AUDIO_FILE_RE = /\.(mp3|m4a|aac|ogg|opus|wav|flac|wma)$/i;
+
+  // "01 - Firestarter (feat. X).mp3" and a "Firestarter" track must meet in
+  // the middle: lowercase, drop a leading track number, collapse punctuation.
+  // (Extension is stripped by the caller — track names may contain dots.)
+  function normalizeForMatch(s){
+    return String(s||'').toLowerCase()
+      .replace(/^\s*\d{1,3}[\s._-]+/, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  // Attach one matched file exactly like a manual ♪ pick: session audio now,
+  // IndexedDB for next time, duration from the audio itself. Calls done()
+  // once the duration is known (or the file turned out to be unreadable).
+  function attachMatchedFile(track, file, done){
+    attachAudioBlob(track, file, file.name);
+    delete audioSessionOnly[track.id];
+    var picked = audioObjects[track.id];
+    var finished = false;
+    function finish(){
+      if(finished) return;
+      finished = true;
+      if(picked.duration && isFinite(picked.duration)){
+        setTrackDuration(track, formatTime(Math.round(picked.duration)));
+      }
+      done();
+    }
+    if(picked.readyState >= 1) finish();
+    else {
+      picked.addEventListener('loadedmetadata', finish);
+      picked.addEventListener('error', finish);
+    }
+    var pickedProfile = currentProfile;
+    audioDbPut(audioKey(pickedProfile, track.id),
+               {blob:file, fileName:file.name, type:file.type, savedAt:Date.now()},
+               function(ok){
+      if(ok || pickedProfile !== currentProfile) return;
+      audioSessionOnly[track.id] = true;
+      renderTrackList();
+      if(!audioQuotaAlerted){
+        audioQuotaAlerted = true;
+        alert("Couldn't save the audio files for next time (storage full or unavailable) — they will play today only.");
+      }
+    });
+  }
+
+  function bulkLoadSongFiles(fileList){
+    var audioFiles = [];
+    for(var i=0; i<fileList.length; i++){
+      var f = fileList[i];
+      if(AUDIO_FILE_RE.test(f.name) || String(f.type).indexOf('audio/') === 0) audioFiles.push(f);
+    }
+    if(!audioFiles.length){ alert('No audio files found in what you picked.'); return; }
+
+    // Only named tracks can match, and loaded audio is never silently replaced
+    var candidates = tracks.filter(function(t){ return t.name && !audioObjects[t.id]; });
+
+    var normFiles = audioFiles.map(function(af){
+      return {file: af, norm: normalizeForMatch(af.name.replace(/\.[^.]+$/, ''))};
+    });
+
+    var matched = [], unmatched = [];
+    candidates.forEach(function(track){
+      var tn = normalizeForMatch(track.name);
+      var exact = null, partial = null;
+      if(tn){
+        normFiles.forEach(function(nf){
+          if(nf.norm === tn){ if(!exact) exact = nf; }
+          else if(!partial && tn.length >= 4 && nf.norm.length >= 4 &&
+                  (nf.norm.indexOf(tn) !== -1 || tn.indexOf(nf.norm) !== -1)){
+            partial = nf;
+          }
+        });
+      }
+      var hit = exact || partial;
+      if(hit) matched.push({track: track, file: hit.file});
+      else unmatched.push(track);
+    });
+
+    if(!matched.length){
+      alert('No file names matched the tracks still needing audio:\n' +
+            unmatched.map(function(t){ return '• ' + t.name; }).join('\n') +
+            '\n\nTip: file names should contain the song name (a leading track number is fine).');
+      return;
+    }
+
+    var pending = matched.length;
+    matched.forEach(function(m){
+      attachMatchedFile(m.track, m.file, function(){
+        pending--;
+        if(pending) return;
+        // All durations known — save once, pull in any saved song cues, render
+        saveCurrentDataIntoProfile();
+        fillCuesFromLibrary(matched.map(function(x){ return x.track; }));
+        renderCueList();
+        renderTrackList();
+        var msg = 'Loaded ' + matched.length + ' song' + (matched.length===1?'':'s') + ':\n' +
+                  matched.map(function(x){ return '• ' + x.track.name + ' ← ' + x.file.name; }).join('\n');
+        if(unmatched.length){
+          msg += '\n\nStill need audio (no matching file):\n' +
+                 unmatched.map(function(t){ return '• ' + t.name; }).join('\n');
+        }
+        alert(msg);
+      });
+    });
   }
 
   // ── Profile storage ────────────────────────────────────────────────────────
@@ -938,7 +1095,11 @@
           if(!nv) return;
           var nparsed = parseSpotifyLink(nv.trim());
           if(!nparsed){ alert("That doesn't look like a Spotify link. In Spotify: ⋯ → Share → Copy link."); return; }
+          // Linking changes the song's identity key (name: → uri:) — carry
+          // its template/BPM/focus along so they aren't orphaned
+          var keyBeforeLink = songKey(track);
           track.spotifyUri = nparsed;
+          migrateSongKeyData(keyBeforeLink, songKey(track));
           saveCurrentDataIntoProfile();
           renderTrackList();
           fillTrackMetaFromSpotify(track, nparsed);
@@ -961,23 +1122,7 @@
         if(!track.spotifyUri){
           var oldName = String(nameBeforeEdit||'').trim().toLowerCase();
           var oldKey = oldName ? 'name:' + oldName : null;
-          var newKey = songKey(track);
-          if(oldKey && newKey && oldKey !== newKey){
-            var moved = false;
-            if(songCueLibrary[oldKey] && !songCueLibrary[newKey]){
-              songCueLibrary[newKey] = songCueLibrary[oldKey];
-              delete songCueLibrary[oldKey];
-              saveSongCueLibrary();
-              moved = true;
-            }
-            if(songBpmMap[oldKey] && !songBpmMap[newKey]){
-              songBpmMap[newKey] = songBpmMap[oldKey];
-              delete songBpmMap[oldKey];
-              saveSongBpmMap();
-              moved = true;
-            }
-            if(moved) renderTrackList();
-          }
+          if(migrateSongKeyData(oldKey, songKey(track))) renderTrackList();
         }
         nameBeforeEdit = track.name;
       });
@@ -1103,11 +1248,16 @@
 
     // Countdown to next cue change
     var timerEl = document.getElementById('timer-display');
+    var remaining = null;
     if(currentIndex + 1 < cues.length){
-      timerEl.textContent = formatTime(Math.max(0, parseTime(cues[currentIndex+1].time) - elapsedSeconds));
+      remaining = Math.max(0, parseTime(cues[currentIndex+1].time) - elapsedSeconds);
+      timerEl.textContent = formatTime(remaining);
     } else {
       timerEl.textContent = cues.length ? '0:00' : formatTime(elapsedSeconds);
     }
+    // Visual lead-up: amber inside 10s, pulsing inside 5s (only while running)
+    timerEl.classList.toggle('soon', running && remaining !== null && remaining <= 10);
+    timerEl.classList.toggle('imminent', running && remaining !== null && remaining <= 5);
 
     var positionEl  = document.getElementById('current-position');
     var loadEl      = document.getElementById('current-load');
@@ -1116,7 +1266,20 @@
     var timerNextEl = document.getElementById('timer-next');
 
     var trackInfo = getCurrentTrackInfo();
-    trackInfoEl.textContent = '';
+    // Focus line: this track's coaching blurb; in the last 15s of a track it
+    // switches to previewing the NEXT song's focus ("what to look forward to")
+    var focusText = '';
+    if(trackInfo){
+      var tBounds = getTrackBoundaries();
+      var leftInTrack = tBounds[trackInfo.index].end - elapsedSeconds;
+      var upcoming = tracks[trackInfo.index + 1];
+      if(running && leftInTrack <= 15 && upcoming && upcoming.focus){
+        focusText = 'Coming up → ' + upcoming.focus;
+      } else if(trackInfo.track.focus){
+        focusText = trackInfo.track.focus;
+      }
+    }
+    trackInfoEl.textContent = focusText;
 
     // Spotify chip: shown when the current track is linked, or has a name and
     // no local audio (local audio always wins)
@@ -1188,8 +1351,20 @@
 
     if(running && currentIndex !== lastCueIndex && currentIndex !== -1){
       if(soundOn) playBeep();
+      flashCueChange();   // visual alert — independent of the beep toggle
     }
     lastCueIndex = currentIndex;
+  }
+
+  var cueFlashTimer = null;
+  function flashCueChange(){
+    var card = document.querySelector('.now-card');
+    if(!card) return;
+    card.classList.remove('cue-flash');
+    void card.offsetWidth;   // reflow so the animation restarts on rapid cues
+    card.classList.add('cue-flash');
+    clearTimeout(cueFlashTimer);
+    cueFlashTimer = setTimeout(function(){ card.classList.remove('cue-flash'); }, 1300);
   }
 
   // ── Render cue list ────────────────────────────────────────────────────────
@@ -1252,16 +1427,37 @@
 
   // ── Timer ──────────────────────────────────────────────────────────────────
 
+  function wakeLockWanted(){
+    return (keepScreenOn || running) && document.visibilityState === 'visible';
+  }
+
   function requestWakeLock(){
     try{
       if(wakeLock) return;
       if(navigator.wakeLock && navigator.wakeLock.request){
         navigator.wakeLock.request('screen').then(function(lock){
           wakeLock = lock;
-          lock.addEventListener('release', function(){ wakeLock = null; });
-        }).catch(function(){});
+          wakeLockFailed = false;
+          // Chrome can revoke the lock at any time (battery saver kicking in,
+          // system pressure) — try to get it back instead of sleeping mid-class
+          lock.addEventListener('release', function(){ wakeLock = null; updateWakeLock(); });
+          stopWakeVideo();
+          updateScreenButton();
+        }).catch(function(err){
+          // Rejected — Chrome does this whenever Battery Saver is on. Fall back
+          // to the video trick: a playing video holds the screen at OS level.
+          wakeLockFailed = true;
+          wakeLockErrMsg = err ? (err.message || err.name || '') : '';
+          startWakeVideo();
+          updateScreenButton();
+        });
+        return;
       }
     }catch(e){}
+    // No Wake Lock API at all (non-Chrome browser / old WebView)
+    wakeLockFailed = true;
+    startWakeVideo();
+    updateScreenButton();
   }
 
   function releaseWakeLock(){
@@ -1270,15 +1466,51 @@
     }catch(e){}
   }
 
+  // 16x16 10s mp4 (~1.6KB) in the page background color, muted + looping:
+  // Android keeps the screen on while a video plays — the NoSleep.js
+  // technique, inlined to keep the zero-dependency rule. Chromium only grants
+  // a MUTED video the media wake lock when the element is ≥75% in-viewport
+  // AND covers ≥20% of the viewport (video_wake_lock.cc, kSizeThreshold=0.2f;
+  // plain IntersectionObserver, so occlusion/opacity don't count) — which is
+  // why the element below is huge-behind-the-content, not a hidden pixel.
+  // Field-verified: a 2x2px version did NOT hold the screen on a Pixel.
+  var WAKE_VIDEO_SRC = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAANKbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAJxAAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAnV0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAJxAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAABAAAAAQAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAACcQAAAAAAABAAAAAAHtbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAACgABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABmG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAVhzdGJsAAAAuHN0c2QAAAAAAAAAAQAAAKhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAABAAEABIAAAASAAAAAAAAAABFUxhdmM2Mi4xNi4xMDAgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAALmF2Y0MBQsAK/+EAFmdCwArZHsBEAAADAAQAAAMACDxImSABAAVoy4PLIAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAAAJOAAAAAAAAABhzdHRzAAAAAAAAAAEAAAAKAABAAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAAKAAAAAQAAADxzdHN6AAAAAAAAAAAAAAAKAAACjwAAAAoAAAAKAAAACQAAAAkAAAAJAAAACQAAAAkAAAAJAAAACQAAABRzdGNvAAAAAAAAAAEAAAN6AAAAYXVkdGEAAABZbWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAsaWxzdAAAACSpdG9vAAAAHGRhdGEAAAABAAAAAExhdmY2Mi42LjEwMQAAAAhmcmVlAAAC6m1kYXQAAAJwBgX//2zcRem95tlIt5Ys2CDZI+7veDI2NCAtIGNvcmUgMTY1IHIzMjIzIDA0ODBjYjAgLSBILjI2NC9NUEVHLTQgQVZDIGNvZGVjIC0gQ29weWxlZnQgMjAwMy0yMDI1IC0gaHR0cDovL3d3dy52aWRlb2xhbi5vcmcveDI2NC5odG1sIC0gb3B0aW9uczogY2FiYWM9MCByZWY9MyBkZWJsb2NrPTE6MDowIGFuYWx5c2U9MHgxOjB4MTExIG1lPWhleCBzdWJtZT03IHBzeT0xIHBzeV9yZD0xLjAwOjAuMDAgbWl4ZWRfcmVmPTEgbWVfcmFuZ2U9MTYgY2hyb21hX21lPTEgdHJlbGxpcz0xIDh4OGRjdD0wIGNxbT0wIGRlYWR6b25lPTIxLDExIGZhc3RfcHNraXA9MSBjaHJvbWFfcXBfb2Zmc2V0PS0yIHRocmVhZHM9MSBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTAgd2VpZ2h0cD0wIGtleWludD0yNTAga2V5aW50X21pbj0xIHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAAF2WIhAX///8EUUAAUhfHAAEFKOAAIHOAAAAABkGaOAv6gAAAAAZBmlQC/qAAAAAFQZpgF/UAAAAFQZqAF/UAAAAFQZqgF/UAAAAFQZrAF/UAAAAFQZrgF/UAAAAFQZsAFvUAAAAFQZsgFfU=';
+
+  function startWakeVideo(){
+    if(!wakeLockWanted()) return;
+    try{
+      if(!wakeVideo){
+        wakeVideo = document.createElement('video');
+        wakeVideo.setAttribute('playsinline','');
+        wakeVideo.muted = true;
+        wakeVideo.loop = true;
+        wakeVideo.src = WAKE_VIDEO_SRC;
+        // Fills the top 40% of the viewport BEHIND the page (z-index:-1) in
+        // the exact --bg color, so it's invisible in practice but passes
+        // Chromium's ≥20%-of-viewport size gate. Don't shrink or hide it —
+        // see the threshold comment above WAKE_VIDEO_SRC.
+        wakeVideo.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:40vh;z-index:-1;pointer-events:none;';
+        document.body.appendChild(wakeVideo);
+      }
+      wakeVideo.play().catch(function(){});
+    }catch(e){}
+  }
+
+  function stopWakeVideo(){
+    try{ if(wakeVideo && !wakeVideo.paused) wakeVideo.pause(); }catch(e){}
+  }
+
   // Hold the wake lock whenever the screen-awake toggle is on (default) or the
   // timer is running — not only during playback, so the phone doesn't sleep
   // while setting up a class.
   function updateWakeLock(){
-    if((keepScreenOn || running) && document.visibilityState === 'visible'){
+    if(wakeLockWanted()){
       requestWakeLock();
     } else {
       releaseWakeLock();
+      stopWakeVideo();
     }
+    updateScreenButton();
   }
 
   // Sets the internal clock to an absolute class time and keeps the
@@ -1435,6 +1667,33 @@
     return n ? 'name:' + n : null;
   }
 
+  // A track's identity key can change (rename of a name-keyed track, or a
+  // name-keyed track gaining a Spotify URI). Carry its song data — cue
+  // template, BPM, focus note — over to the new key so nothing is orphaned.
+  function migrateSongKeyData(oldKey, newKey){
+    if(!oldKey || !newKey || oldKey === newKey) return false;
+    var moved = false;
+    if(songCueLibrary[oldKey] && !songCueLibrary[newKey]){
+      songCueLibrary[newKey] = songCueLibrary[oldKey];
+      delete songCueLibrary[oldKey];
+      saveSongCueLibrary();
+      moved = true;
+    }
+    if(songBpmMap[oldKey] && !songBpmMap[newKey]){
+      songBpmMap[newKey] = songBpmMap[oldKey];
+      delete songBpmMap[oldKey];
+      saveSongBpmMap();
+      moved = true;
+    }
+    if(songFocusMap[oldKey] && !songFocusMap[newKey]){
+      songFocusMap[newKey] = songFocusMap[oldKey];
+      delete songFocusMap[oldKey];
+      saveSongFocusMap();
+      moved = true;
+    }
+    return moved;
+  }
+
   function findTrackBounds(track){
     var bounds = getTrackBoundaries();
     for(var i=0; i<bounds.length; i++){
@@ -1470,15 +1729,16 @@
   // re-renders once at the end if anything was added. Also fills each track's
   // BPM from the song BPM map, so BPM follows songs the same way cues do.
   function fillCuesFromLibrary(trackList){
-    var total = 0, bpmFilled = false;
+    var total = 0, metaFilled = false;
     (trackList||tracks).forEach(function(t){
       total += insertLibraryCuesForTrack(t);
       var key = songKey(t);
-      if(key && !t.bpm && songBpmMap[key]){ t.bpm = songBpmMap[key]; bpmFilled = true; }
+      if(key && !t.bpm && songBpmMap[key]){ t.bpm = songBpmMap[key]; metaFilled = true; }
+      if(key && !t.focus && songFocusMap[key]){ t.focus = songFocusMap[key]; metaFilled = true; }
     });
-    if(total || bpmFilled) saveCurrentDataIntoProfile();
+    if(total || metaFilled) saveCurrentDataIntoProfile();
     if(total) renderCueList();
-    else if(bpmFilled) updateCurrentCueDisplay();
+    else if(metaFilled) updateCurrentCueDisplay();
     return total;
   }
 
@@ -1533,6 +1793,35 @@
     updateCurrentCueDisplay();
   }
 
+  // ── Track focus notes (Les Mills "TRACK FOCUS" / "WORKOUT PLAN") ───────────
+  // A per-track coaching blurb shown on the Now card; like BPM, it's a fact
+  // about the SONG, so it also lives in a global songKey map.
+
+  function loadSongFocusMap(){
+    try{
+      var raw = localStorage.getItem(SONG_FOCUS_KEY);
+      songFocusMap = raw ? JSON.parse(raw) : {};
+    }catch(e){ songFocusMap = {}; }
+    if(!songFocusMap || typeof songFocusMap !== 'object') songFocusMap = {};
+  }
+
+  function saveSongFocusMap(){
+    try{ localStorage.setItem(SONG_FOCUS_KEY, JSON.stringify(songFocusMap)); }catch(e){}
+  }
+
+  function setTrackFocus(track, text){
+    text = String(text||'').trim();
+    track.focus = text;
+    var key = songKey(track);
+    if(key){
+      if(text) songFocusMap[key] = text;
+      else delete songFocusMap[key];
+      saveSongFocusMap();
+    }
+    saveCurrentDataIntoProfile();
+    updateCurrentCueDisplay();
+  }
+
   // ── BPM dialog: manual / tap tempo / audio analysis ────────────────────────
 
   var bpmModalTrack = null;
@@ -1551,6 +1840,7 @@
     tapTimes = [];
     document.getElementById('bpm-title').textContent = 'Song BPM — ' + (track.name || 'this track');
     document.getElementById('bpm-input').value = track.bpm || '';
+    document.getElementById('bpm-focus').value = track.focus || '';
     document.getElementById('bpm-analyze-row').style.display = audioObjects[track.id] ? '' : 'none';
     document.getElementById('bpm-tap-hint').textContent = 'Or tap TAP on the beat — 4+ taps to lock in.';
     updateBpmCadences();
@@ -1986,6 +2276,7 @@
     var colDur   = colIdx(['duration','dur','length','song duration','track duration','songduration','trackduration']);
     var colSpot  = colIdx(['spotify','spotify uri','spotify link','spotify url']);
     var colBpm   = colIdx(['bpm','beats per minute','song bpm','songbpm']);   // song tempo, not cue cadence
+    var colFocus = colIdx(['focus','track focus','trackfocus','notes','workout plan','workoutplan']);   // per-track coaching blurb
 
     if(colTime === -1 && colCue === -1){
       return {error:'Could not find required columns. Make sure your header row includes "Time" and/or "Cue" (or similar column names).'};
@@ -2006,7 +2297,8 @@
         track:    get(colTrack),
         duration: get(colDur),
         spotify:  get(colSpot),
-        bpm:      get(colBpm)
+        bpm:      get(colBpm),
+        focus:    get(colFocus)
       });
     }
 
@@ -2053,13 +2345,15 @@
       if(!name) return;
       if(!trackSeen[name]){
         var t = {id:Date.now()+trackList.length, name:name, duration: r.duration||'',
-                 spotifyUri: parseSpotifyLink(r.spotify||''), bpm: parseBpmCell(r.bpm)};
+                 spotifyUri: parseSpotifyLink(r.spotify||''), bpm: parseBpmCell(r.bpm),
+                 focus: r.focus||''};
         trackSeen[name] = t;
         trackList.push(t);
       } else {
         if(r.duration && !trackSeen[name].duration) trackSeen[name].duration = r.duration;
         if(r.spotify && !trackSeen[name].spotifyUri) trackSeen[name].spotifyUri = parseSpotifyLink(r.spotify);
         if(r.bpm && !trackSeen[name].bpm) trackSeen[name].bpm = parseBpmCell(r.bpm);
+        if(r.focus && !trackSeen[name].focus) trackSeen[name].focus = r.focus;
       }
     });
 
@@ -2145,13 +2439,16 @@
     renderCueList();
     renderTrackList();
     if(result.tracks.length){
-      // Imported BPMs are song facts — remember them globally, like cues
-      var mapChanged = false;
+      // Imported BPMs and focus notes are song facts — remember them globally, like cues
+      var mapChanged = false, focusChanged = false;
       result.tracks.forEach(function(t){
         var key = songKey(t);
-        if(key && t.bpm && songBpmMap[key] !== t.bpm){ songBpmMap[key] = t.bpm; mapChanged = true; }
+        if(!key) return;
+        if(t.bpm && songBpmMap[key] !== t.bpm){ songBpmMap[key] = t.bpm; mapChanged = true; }
+        if(t.focus && songFocusMap[key] !== t.focus){ songFocusMap[key] = t.focus; focusChanged = true; }
       });
       if(mapChanged) saveSongBpmMap();
+      if(focusChanged) saveSongFocusMap();
       fillCuesFromLibrary(result.tracks);
     }
   }
@@ -2584,6 +2881,91 @@
     spimpEls().modal.classList.remove('open');
   }
 
+  // ── Bulk link: match every unlinked track by name search ───────────────────
+  // One tap after a sheet import links the whole setlist. A hit only counts
+  // when Spotify's duration agrees with the sheet's within 3s — a strong
+  // confidence signal we get for free — otherwise the track is reported for
+  // manual linking rather than guessed at. Sequential requests (rate limits).
+  function spotifyMatchAll(){
+    if(!spotifyConnected()){
+      alert('Connect Spotify first — see the "Spotify remote (optional)" section at the bottom of the page.');
+      return;
+    }
+    var candidates = tracks.filter(function(t){ return t.name && !t.spotifyUri; });
+    if(!candidates.length){
+      alert(tracks.length ? 'Every named track is already linked to Spotify.'
+                          : 'Add tracks first (import your class), then match them.');
+      return;
+    }
+    spotifyOffline = false;   // fresh attempt
+    var btn = document.getElementById('btn-spimp-match');
+    btn.disabled = true;
+    var linked = [], unsure = [], missed = [];
+    var i = 0;
+
+    function finish(){
+      btn.disabled = false;
+      btn.textContent = '♫ Match all songs on Spotify';
+      if(linked.length){
+        saveCurrentDataIntoProfile();
+        fillCuesFromLibrary(linked.map(function(x){ return x.track; }));
+        renderCueList();
+        renderTrackList();
+      }
+      var msg = linked.length
+        ? 'Linked ' + linked.length + ' song(s):\n' + linked.map(function(x){ return '• ' + x.track.name + ' ← ' + x.label; }).join('\n')
+        : 'No songs could be matched confidently.';
+      if(unsure.length){
+        msg += '\n\nNot confident about these — durations didn\'t line up; link via the track\'s ♫ button:\n' +
+               unsure.map(function(s){ return '• ' + s; }).join('\n');
+      }
+      if(missed.length){
+        msg += '\n\nNot found on Spotify:\n' + missed.map(function(s){ return '• ' + s; }).join('\n');
+      }
+      alert(msg);
+    }
+
+    function step(){
+      if(i >= candidates.length){ finish(); return; }
+      var track = candidates[i++];
+      btn.textContent = '♫ Matching ' + i + '/' + candidates.length + '…';
+      spotifyApiJson('GET', '/v1/search?type=track&limit=5&q=' + encodeURIComponent(track.name)).then(function(data){
+        var items = (data && data.tracks && data.tracks.items) ? data.tracks.items : [];
+        if(!items.length){ missed.push(track.name); step(); return; }
+        var declared = parseTime(track.duration || '0');
+        var hit = null;
+        for(var k=0; k<items.length; k++){
+          var d = Math.round((items[k].duration_ms||0)/1000);
+          if(declared > 0 && Math.abs(d - declared) <= 3){ hit = items[k]; break; }
+        }
+        if(hit){
+          // Linking changes the song's identity key (name: → uri:) — migrate
+          var oldKey = songKey(track);
+          track.spotifyUri = hit.uri;
+          migrateSongKeyData(oldKey, songKey(track));
+          var artists = (hit.artists||[]).map(function(a){ return a.name; }).join(', ');
+          linked.push({track: track, label: hit.name + (artists ? ' · ' + artists : '')});
+        } else {
+          unsure.push(track.name + ' (closest: "' + items[0].name + '" at ' +
+                      formatTime(Math.round((items[0].duration_ms||0)/1000)) + ' vs your ' + (track.duration || '?') + ')');
+        }
+        step();
+      }).catch(function(err){
+        btn.disabled = false;
+        btn.textContent = '♫ Match all songs on Spotify';
+        if(linked.length){
+          saveCurrentDataIntoProfile();
+          fillCuesFromLibrary(linked.map(function(x){ return x.track; }));
+          renderCueList();
+          renderTrackList();
+        }
+        alert('Spotify matching stopped: ' + String((err && err.message) || err) +
+              (linked.length ? '\n\n' + linked.length + ' song(s) were linked before the error.' : ''));
+      });
+    }
+    step();
+  }
+
   function spimpFail(err){
     var els = spimpEls();
     els.list.innerHTML = '';
@@ -2978,12 +3360,12 @@
   // cues still gets one row (Track/Duration/Spotify only) so it isn't lost;
   // parseImportData() knows to register the track without inventing a cue.
   function buildSheetRows(){
-    var header = ['Time','Cue','Position','Tempo','Track','Duration','BPM','Spotify'];
+    var header = ['Time','Cue','Position','Tempo','Track','Duration','BPM','Spotify','Focus'];
     var rows = [header];
 
     if(!tracks.length){
       cues.forEach(function(c){
-        rows.push([c.time||'', c.text||'', c.position||'', c.tempo||'', '', '', '', '']);
+        rows.push([c.time||'', c.text||'', c.position||'', c.tempo||'', '', '', '', '', '']);
       });
       return rows;
     }
@@ -3005,7 +3387,7 @@
       var trackCues = buckets[i];
       var start = bounds[i].start;
       if(!trackCues.length){
-        rows.push(['', '', '', '', track.name||'', track.duration||'', track.bpm||'', track.spotifyUri||'']);
+        rows.push(['', '', '', '', track.name||'', track.duration||'', track.bpm||'', track.spotifyUri||'', track.focus||'']);
         return;
       }
       trackCues.forEach(function(c, j){
@@ -3015,7 +3397,8 @@
           j===0 ? (track.name||'') : '',
           j===0 ? (track.duration||'') : '',
           j===0 ? (track.bpm||'') : '',
-          j===0 ? (track.spotifyUri||'') : ''
+          j===0 ? (track.spotifyUri||'') : '',
+          j===0 ? (track.focus||'') : ''
         ]);
       });
     });
@@ -3086,6 +3469,7 @@
     var raw = document.getElementById('bpm-input').value.trim();
     var v = Math.round(Number(raw));
     if(raw !== '' && !(v > 0 && v < 300)){ alert('BPM should be a number between 1 and 299 (or blank to clear).'); return; }
+    setTrackFocus(bpmModalTrack, document.getElementById('bpm-focus').value);
     setTrackBpm(bpmModalTrack, raw === '' ? 0 : v);
     closeBpmModal();
   });
@@ -3132,9 +3516,35 @@
   document.getElementById('bpm-modal').addEventListener('click', function(e){
     if(e.target === this) closeBpmModal();
   });
+  // Tap the focus line on the Now card to edit the CURRENT track's note
+  // (the ♩ dialog is the add path when no note is showing yet)
+  document.getElementById('track-info').addEventListener('click', function(){
+    var info = getCurrentTrackInfo();
+    if(!info) return;
+    var v = window.prompt('Track focus note for "' + (info.track.name || 'this song') + '" (blank to clear):', info.track.focus || '');
+    if(v === null) return;
+    setTrackFocus(info.track, v);
+  });
   // Wake locks are auto-released when the tab hides; re-acquire on return
   document.addEventListener('visibilitychange', updateWakeLock);
+  // …and re-acquired on a slow heartbeat, so a lock lost to Battery Saver comes
+  // back by itself once conditions allow (requestWakeLock no-ops while held)
+  setInterval(updateWakeLock, 15000);
   document.getElementById('btn-screen').addEventListener('click', function(){
+    // Red ring = the phone refused the wake lock. On a phone there's no way to
+    // hover the tooltip, so a tap on the warning explains itself instead of
+    // silently toggling keep-awake off.
+    if(this.classList.contains('screen-warn')){
+      var why = 'The phone refused the screen wake lock' +
+                (wakeLockErrMsg ? ':\n"' + wakeLockErrMsg + '"' : '.') +
+                '\n\nThis is usually Android Battery Saver — turn it off in Settings (or charge the phone) and this fixes itself. ' +
+                (wakeVideo && !wakeVideo.paused
+                  ? 'Meanwhile the fallback is running and should be keeping the screen awake.'
+                  : 'The fallback isn\'t running either right now.') +
+                '\n\nOK = keep trying · Cancel = allow the screen to sleep';
+      if(window.confirm(why)){ updateWakeLock(); return; }
+      if(!keepScreenOn) return;   // running-driven warn; nothing to switch off
+    }
     keepScreenOn = !keepScreenOn;
     try{ localStorage.setItem(SCREEN_ON_KEY, keepScreenOn ? '1' : '0'); }catch(e){}
     updateScreenButton();
@@ -3148,6 +3558,15 @@
 
   document.getElementById('btn-capture').addEventListener('click', function(){
     setCaptureOpen(!captureOpen);
+  });
+  // Ride mode: the delivering-class display. Hides all editing/setup sections
+  // (CSS body.ride-mode) and enlarges Now/Next; the timer, controls and — if
+  // toggled — the capture panel keep working unchanged.
+  document.getElementById('btn-ride').addEventListener('click', function(){
+    var on = !document.body.classList.contains('ride-mode');
+    document.body.classList.toggle('ride-mode', on);
+    this.classList.toggle('mode-on', on);
+    this.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
   document.getElementById('btn-mark').addEventListener('click', function(){ captureCue(null); });
   document.getElementById('btn-nudge-back').addEventListener('click', function(){ nudgeLastCue(-2); });
@@ -3268,8 +3687,8 @@
   // their range so a template can't be wiped by a class that lacks it.
   document.getElementById('btn-save-all-lib').addEventListener('click', function(){
     if(!tracks.length){ alert('Add some tracks to the setlist first.'); return; }
-    if(!window.confirm("Save each song's current cues (and BPM) as its reusable template? Existing templates for these songs are replaced.")) return;
-    var saved = 0, skipped = 0, bpmSaved = false;
+    if(!window.confirm("Save each song's current cues (and BPM/focus note) as its reusable template? Existing templates for these songs are replaced.")) return;
+    var saved = 0, skipped = 0, bpmSaved = false, focusSaved = false;
     tracks.forEach(function(t){
       var key = songKey(t);
       if(!key){ skipped++; return; }
@@ -3281,13 +3700,16 @@
       if(hasCues){ saveTrackCuesToLibrary(t); saved++; }
       else skipped++;
       if(t.bpm && songBpmMap[key] !== t.bpm){ songBpmMap[key] = t.bpm; bpmSaved = true; }
+      if(t.focus && songFocusMap[key] !== t.focus){ songFocusMap[key] = t.focus; focusSaved = true; }
     });
     if(bpmSaved) saveSongBpmMap();
+    if(focusSaved) saveSongFocusMap();
     renderTrackList();
     alert('Saved templates for ' + saved + ' song(s)' +
           (skipped ? ' (skipped ' + skipped + ' with no cues or no name)' : '') + '.');
   });
   document.getElementById('btn-spimp-open').addEventListener('click', openSpotifyImport);
+  document.getElementById('btn-spimp-match').addEventListener('click', spotifyMatchAll);
   document.getElementById('spimp-close').addEventListener('click', closeSpotifyImport);
   document.getElementById('spimp-back').addEventListener('click', spimpShowPlaylists);
   document.getElementById('spimp-replace').addEventListener('click', function(){ spimpApplyPlaylist('replace'); });
@@ -3304,6 +3726,21 @@
     tracks.push({id:Date.now(), name:'', duration:'3:00'});
     saveCurrentDataIntoProfile();
     renderTrackList();
+  });
+
+  document.getElementById('btn-load-folder').addEventListener('click', function(){
+    var needsAudio = tracks.some(function(t){ return t.name && !audioObjects[t.id]; });
+    if(!needsAudio){
+      alert(tracks.length
+        ? 'Every named track already has audio loaded. To swap one song, tap its ♪ button.'
+        : 'Add tracks first (import your class or playlist), then load their files in one go.');
+      return;
+    }
+    document.getElementById('folder-audio-input').click();
+  });
+  document.getElementById('folder-audio-input').addEventListener('change', function(){
+    if(this.files && this.files.length) bulkLoadSongFiles(this.files);
+    this.value = '';   // allow re-picking the same folder
   });
 
   document.getElementById('profile-select').addEventListener('change', function(){
@@ -3338,7 +3775,13 @@
     var btn = document.getElementById('btn-screen');
     btn.textContent = keepScreenOn ? '🔆' : '🌙';
     btn.setAttribute('aria-pressed', keepScreenOn ? 'true' : 'false');
-    btn.title = keepScreenOn ? 'Screen stays awake — tap to allow sleep' : 'Screen may sleep — tap to keep awake';
+    // Failure must be visible, not silent: red ring = the normal wake lock was
+    // refused (usually Battery Saver) and the video fallback is carrying it.
+    var warn = wakeLockWanted() && !wakeLock && wakeLockFailed;
+    btn.classList.toggle('screen-warn', warn);
+    btn.title = warn
+      ? "Phone refused the screen-awake lock (Battery Saver?) — using a fallback. If the screen still sleeps, turn off Battery Saver."
+      : (keepScreenOn ? 'Screen stays awake — tap to allow sleep' : 'Screen may sleep — tap to keep awake');
   }
 
   function init(){
@@ -3348,6 +3791,7 @@
     renderPresetGrid();
     loadSongCueLibrary();
     loadSongBpmMap();
+    loadSongFocusMap();
     try{ keepScreenOn = localStorage.getItem(SCREEN_ON_KEY) !== '0'; }catch(e){}
     updateScreenButton();
     updateWakeLock();
