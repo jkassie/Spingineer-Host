@@ -156,6 +156,7 @@
 
   .sound-toggle{font-size:18px;padding:11px 14px;flex-shrink:0;}
   .sound-toggle.screen-warn{border-color:#ef5350;background:rgba(239,83,80,0.14);}
+  .sound-toggle.screen-fallback{border-color:var(--accent);background:var(--accent-soft);}
   .sound-toggle.mode-on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
 
   /* Visual cue alerts — the countdown warms up as the change approaches, and
@@ -206,7 +207,7 @@
       <button class="btn-accent" id="btn-startpause">▶ Start</button>
       <button id="btn-reset">↺ Reset</button>
       <button id="btn-next-track" class="skip-btn" aria-label="Next track">⏭</button>
-      <button id="btn-sound" class="sound-toggle" aria-label="Toggle sound alerts">🔔</button>
+      <button id="btn-sound" class="sound-toggle" aria-label="Toggle sound alerts" aria-pressed="false">🔕</button>
       <button id="btn-screen" class="sound-toggle" aria-label="Keep screen awake" aria-pressed="true" title="Keep screen awake">🔆</button>
       <button id="btn-capture" class="sound-toggle" aria-label="Toggle cue capture mode" aria-pressed="false">✎</button>
       <button id="btn-ride" class="sound-toggle" aria-label="Toggle ride mode (big display, hides editing)" aria-pressed="false">🚴</button>
@@ -315,8 +316,8 @@
       <input type="number" id="bpm-input" min="40" max="240" step="1" placeholder="bpm" inputmode="numeric">
       <button id="bpm-tap" class="btn-accent bpm-tap-btn">TAP</button>
     </div>
-    <p class="modal-desc" style="margin:10px 0 6px;">Track focus note (shown on the Now card; previews as "Coming up →" near the end of the song before):</p>
-    <input type="text" id="bpm-focus" class="sheet-url-inp" placeholder="e.g. 2x rounds of Strength and Power: 70 and 60 seconds">
+    <p class="modal-desc" style="margin:10px 0 6px;">Workout plan (shown on the Now card; previews as "Coming up →" near the end of the song before):</p>
+    <input type="text" id="bpm-workout-plan" class="sheet-url-inp" placeholder="e.g. 2x rounds of Strength and Power: 70 and 60 seconds">
 
     <p class="modal-desc" id="bpm-tap-hint"></p>
     <div class="modal-actions" id="bpm-analyze-row" style="display:none">
@@ -459,7 +460,7 @@
   var intervalId     = null;
   var lastCueIndex   = -1;
   var lastTrackIndex = -1;
-  var soundOn        = true;
+  var soundOn        = false;   // muted by default — cue changes still flash visually
   var audioObjects   = {};   // track.id -> Audio element
   var audioUrls      = {};   // track.id -> object URL
   var audioNames     = {};   // track.id -> file name (session only)
@@ -472,14 +473,19 @@
   var wakeVideo      = null;   // fallback <video> that holds the screen via media playback
   var SCREEN_ON_KEY  = 'cycleCueScreenOn_v1';
   var keepScreenOn   = true;
+  // Pausing mid-class means the instructor is stepping away, not setting up —
+  // the screen doesn't need to stay awake just because keepScreenOn is on.
+  // Cleared (so keepScreenOn governs again) by Start, Reset, or an explicit
+  // tap on the 🔆 button, so a deliberate re-enable always wins.
+  var pauseAllowsSleep = false;
   var SONG_CUES_KEY  = 'cycleSongCues_v1';
   var songCueLibrary = {};   // songKey → [{time (relative to song start), text, position, tempo}]
   var lastCapturedSongKey = null;
   var lastCapturedLibIndex = -1;
   var SONG_BPM_KEY   = 'cycleSongBpm_v1';
   var songBpmMap     = {};   // songKey → bpm (number) — BPM follows songs like cues do
-  var SONG_FOCUS_KEY = 'cycleSongFocus_v1';
-  var songFocusMap   = {};   // songKey → focus note (Les Mills "TRACK FOCUS") — follows songs too
+  var SONG_WORKOUT_PLAN_KEY = 'cycleSongWorkoutPlan_v1';
+  var songWorkoutPlanMap    = {};   // songKey → workout plan note (Les Mills "WORKOUT PLAN") — follows songs too
 
   // ── Time utilities ─────────────────────────────────────────────────────────
 
@@ -1020,14 +1026,16 @@
       spotifyBtn.title = track.spotifyUri ? 'Spotify linked — tap to open or edit' : 'Set Spotify link';
       spotifyBtn.setAttribute('aria-label','Spotify link for this track');
 
-      var libKey = songKey(track);
+      var libKey = songCueKey(track);
       var libCount = (libKey && songCueLibrary[libKey]) ? songCueLibrary[libKey].length : 0;
+      var libOcc = songOccurrence(track);
+      var libOccLabel = libOcc.total > 1 ? ' (play ' + libOcc.index + ' of ' + libOcc.total + ' in this class)' : '';
       var libBtn = document.createElement('button');
       libBtn.className = 'track-lib-btn' + (libCount ? ' has-cues' : '');
       libBtn.textContent = '📋';
-      libBtn.title = libCount
+      libBtn.title = (libCount
         ? libCount + ' saved cue(s) for this song — tap to insert or update'
-        : 'No saved cues for this song yet — tap to save this class\'s cues';
+        : 'No saved cues for this song yet — tap to save this class\'s cues') + libOccLabel;
       libBtn.setAttribute('aria-label','Song cue library for this track');
 
       actions.appendChild(upBtn);
@@ -1044,23 +1052,26 @@
       container.appendChild(item);
 
       libBtn.addEventListener('click', function(){
-        var key = songKey(track);
+        var key = songCueKey(track);
         if(!key){ alert('Name this track (or link it to Spotify) first, so its cues can be saved and found later.'); return; }
+        var occ = songOccurrence(track);
+        var occLabel = occ.total > 1 ? ' — this is play ' + occ.index + ' of ' + occ.total + ' in this class, with its own independent saved cues' : '';
+        var songLabel = (track.name || 'This song') + occLabel;
         var lib = songCueLibrary[key];
         if(lib && lib.length){
-          if(window.confirm('"' + (track.name || 'This song') + '" has ' + lib.length + ' saved cue(s) in your song library.\n\n' +
+          if(window.confirm('"' + songLabel + '" has ' + lib.length + ' saved cue(s) in your song library.\n\n' +
                              'OK = insert them into this class now\nCancel = replace the saved cues with this class\'s current cues for this song')){
             var added = insertLibraryCuesForTrack(track);
             if(added){ saveCurrentDataIntoProfile(); renderCueList(); renderTrackList(); }
             else alert('Nothing new to add — this class already has cues at those times.');
           } else {
-            if(window.confirm('Replace the ' + lib.length + ' saved cue(s) for "' + (track.name||'this song') + '" with the cues currently in this song\'s time range in this class?')){
+            if(window.confirm('Replace the ' + lib.length + ' saved cue(s) for "' + songLabel + '" with the cues currently in this song\'s time range in this class?')){
               saveTrackCuesToLibrary(track);
               renderTrackList();
             }
           }
         } else {
-          if(window.confirm('No saved cues yet for "' + (track.name||'this song') + '". Save this class\'s cues in this song\'s time range as a reusable template (so future playlists with this song get them automatically)?')){
+          if(window.confirm('No saved cues yet for "' + songLabel + '". Save this class\'s cues in this song\'s time range as a reusable template (so future playlists with this song get them automatically)?')){
             saveTrackCuesToLibrary(track);
             renderTrackList();
           }
@@ -1096,10 +1107,11 @@
           var nparsed = parseSpotifyLink(nv.trim());
           if(!nparsed){ alert("That doesn't look like a Spotify link. In Spotify: ⋯ → Share → Copy link."); return; }
           // Linking changes the song's identity key (name: → uri:) — carry
-          // its template/BPM/focus along so they aren't orphaned
+          // its template/BPM/workout plan along so they aren't orphaned
           var keyBeforeLink = songKey(track);
+          var cueKeyBeforeLink = songCueKey(track);
           track.spotifyUri = nparsed;
-          migrateSongKeyData(keyBeforeLink, songKey(track));
+          migrateSongKeyData(keyBeforeLink, songKey(track), cueKeyBeforeLink, songCueKey(track));
           saveCurrentDataIntoProfile();
           renderTrackList();
           fillTrackMetaFromSpotify(track, nparsed);
@@ -1122,7 +1134,8 @@
         if(!track.spotifyUri){
           var oldName = String(nameBeforeEdit||'').trim().toLowerCase();
           var oldKey = oldName ? 'name:' + oldName : null;
-          if(migrateSongKeyData(oldKey, songKey(track))) renderTrackList();
+          var oldCueKey = songCueKey(track, oldKey);
+          if(migrateSongKeyData(oldKey, songKey(track), oldCueKey, songCueKey(track))) renderTrackList();
         }
         nameBeforeEdit = track.name;
       });
@@ -1266,20 +1279,20 @@
     var timerNextEl = document.getElementById('timer-next');
 
     var trackInfo = getCurrentTrackInfo();
-    // Focus line: this track's coaching blurb; in the last 15s of a track it
-    // switches to previewing the NEXT song's focus ("what to look forward to")
-    var focusText = '';
+    // Workout plan line: this track's coaching blurb; in the last 15s of a
+    // track it switches to previewing the NEXT song's plan ("what to look forward to")
+    var planText = '';
     if(trackInfo){
       var tBounds = getTrackBoundaries();
       var leftInTrack = tBounds[trackInfo.index].end - elapsedSeconds;
       var upcoming = tracks[trackInfo.index + 1];
-      if(running && leftInTrack <= 15 && upcoming && upcoming.focus){
-        focusText = 'Coming up → ' + upcoming.focus;
-      } else if(trackInfo.track.focus){
-        focusText = trackInfo.track.focus;
+      if(running && leftInTrack <= 15 && upcoming && upcoming.workoutPlan){
+        planText = 'Coming up → ' + upcoming.workoutPlan;
+      } else if(trackInfo.track.workoutPlan){
+        planText = trackInfo.track.workoutPlan;
       }
     }
-    trackInfoEl.textContent = focusText;
+    trackInfoEl.textContent = planText;
 
     // Spotify chip: shown when the current track is linked, or has a name and
     // no local audio (local audio always wins)
@@ -1428,7 +1441,10 @@
   // ── Timer ──────────────────────────────────────────────────────────────────
 
   function wakeLockWanted(){
-    return (keepScreenOn || running) && document.visibilityState === 'visible';
+    if(document.visibilityState !== 'visible') return false;
+    if(running) return true;
+    if(pauseAllowsSleep) return false;   // just paused — let the screen sleep
+    return keepScreenOn;
   }
 
   function requestWakeLock(){
@@ -1500,9 +1516,9 @@
     try{ if(wakeVideo && !wakeVideo.paused) wakeVideo.pause(); }catch(e){}
   }
 
-  // Hold the wake lock whenever the screen-awake toggle is on (default) or the
-  // timer is running — not only during playback, so the phone doesn't sleep
-  // while setting up a class.
+  // Hold the wake lock whenever the timer is running, or (before starting /
+  // after reset) the screen-awake toggle is on — so the phone doesn't sleep
+  // while setting up a class. Not held on pause; see wakeLockWanted().
   function updateWakeLock(){
     if(wakeLockWanted()){
       requestWakeLock();
@@ -1543,6 +1559,7 @@
     var btn = document.getElementById('btn-startpause');
     if(!running){
       running = true;
+      pauseAllowsSleep = false;
       anchorEpochMs = Date.now() - elapsedSeconds * 1000;
       spotifyOffline = false;   // each Start is a fresh chance to reach Spotify
       // Set lastTrackIndex before starting so the auto-advance in updateCurrentCueDisplay
@@ -1564,6 +1581,7 @@
       btn.textContent = '⏸ Pause';
     } else {
       running = false;
+      pauseAllowsSleep = true;
       clearInterval(intervalId);
       tracks.forEach(function(t){
         if(audioObjects[t.id]) audioObjects[t.id].pause();
@@ -1576,6 +1594,7 @@
 
   function resetTimer(){
     running = false;
+    pauseAllowsSleep = false;
     clearInterval(intervalId);
     updateWakeLock();
     elapsedSeconds = 0;
@@ -1667,30 +1686,69 @@
     return n ? 'name:' + n : null;
   }
 
+  // When the same song appears more than once in the CURRENT setlist (e.g. a
+  // Sprint release reprising a track for a later, differently-choreographed
+  // block), each occurrence needs its OWN saved cue template — sharing
+  // songKey() would let live-capture or the 📋 button on one occurrence
+  // silently overwrite the other's cues. This returns the plain key for the
+  // first (or only) occurrence, and 'key#2', 'key#3', … for later ones —
+  // stable as long as the setlist order doesn't change (reordering two
+  // occurrences of the same song can reassign which is "#1"; a re-save from
+  // the 📋 button after such a reorder fixes it back up).
+  // BPM and the workout plan stay on the plain songKey() — deliberately
+  // shared across occurrences, since the tempo (and usually the coaching
+  // note) is a fact about the song/interval, not something that needs
+  // independence the way cues do.
+  function songCueKey(track, keyOverride){
+    var key = (keyOverride !== undefined) ? keyOverride : songKey(track);
+    if(!key) return null;
+    var idx = 0;
+    for(var i=0; i<tracks.length; i++){
+      if(tracks[i].id === track.id) break;
+      if(songKey(tracks[i]) === key) idx++;
+    }
+    return idx === 0 ? key : key + '#' + (idx+1);
+  }
+
+  // 1-based {index, total} describing this track's position among tracks in
+  // the current setlist that share its song identity — used only to label
+  // the UI ("play 2 of 2") when a song repeats, so it's clear a saved
+  // template belongs to one specific occurrence.
+  function songOccurrence(track){
+    var key = songKey(track);
+    if(!key) return {index:1, total:1};
+    var total = 0, index = 1;
+    for(var i=0; i<tracks.length; i++){
+      if(songKey(tracks[i]) === key){
+        total++;
+        if(tracks[i].id === track.id) index = total;
+      }
+    }
+    return {index:index, total:total};
+  }
+
+  function migrateMapEntry(map, oldKey, newKey, saveFn){
+    if(oldKey && newKey && oldKey !== newKey && map[oldKey] && !map[newKey]){
+      map[newKey] = map[oldKey];
+      delete map[oldKey];
+      saveFn();
+      return true;
+    }
+    return false;
+  }
+
   // A track's identity key can change (rename of a name-keyed track, or a
   // name-keyed track gaining a Spotify URI). Carry its song data — cue
-  // template, BPM, focus note — over to the new key so nothing is orphaned.
-  function migrateSongKeyData(oldKey, newKey){
-    if(!oldKey || !newKey || oldKey === newKey) return false;
+  // template (by occurrence-aware key), BPM, workout plan (by plain key) —
+  // over to the new key so nothing is orphaned. Callers must compute
+  // oldCueKey/newCueKey with songCueKey() themselves (before/after the
+  // identity-changing mutation) since this function doesn't have access to
+  // the track's prior state.
+  function migrateSongKeyData(oldKey, newKey, oldCueKey, newCueKey){
     var moved = false;
-    if(songCueLibrary[oldKey] && !songCueLibrary[newKey]){
-      songCueLibrary[newKey] = songCueLibrary[oldKey];
-      delete songCueLibrary[oldKey];
-      saveSongCueLibrary();
-      moved = true;
-    }
-    if(songBpmMap[oldKey] && !songBpmMap[newKey]){
-      songBpmMap[newKey] = songBpmMap[oldKey];
-      delete songBpmMap[oldKey];
-      saveSongBpmMap();
-      moved = true;
-    }
-    if(songFocusMap[oldKey] && !songFocusMap[newKey]){
-      songFocusMap[newKey] = songFocusMap[oldKey];
-      delete songFocusMap[oldKey];
-      saveSongFocusMap();
-      moved = true;
-    }
+    if(migrateMapEntry(songCueLibrary, oldCueKey, newCueKey, saveSongCueLibrary)) moved = true;
+    if(migrateMapEntry(songBpmMap, oldKey, newKey, saveSongBpmMap)) moved = true;
+    if(migrateMapEntry(songWorkoutPlanMap, oldKey, newKey, saveSongWorkoutPlanMap)) moved = true;
     return moved;
   }
 
@@ -1706,7 +1764,7 @@
   // right absolute time. Additive + de-duped by exact absolute time. Does not
   // save/render — callers batch that after inserting for possibly many tracks.
   function insertLibraryCuesForTrack(track){
-    var key = songKey(track);
+    var key = songCueKey(track);
     if(!key) return 0;
     var lib = songCueLibrary[key];
     if(!lib || !lib.length) return 0;
@@ -1727,14 +1785,15 @@
 
   // Bulk pass over a set of tracks (defaults to the whole setlist); saves and
   // re-renders once at the end if anything was added. Also fills each track's
-  // BPM from the song BPM map, so BPM follows songs the same way cues do.
+  // BPM and workout plan from the global maps, so both follow songs the same
+  // way cues do.
   function fillCuesFromLibrary(trackList){
     var total = 0, metaFilled = false;
     (trackList||tracks).forEach(function(t){
       total += insertLibraryCuesForTrack(t);
       var key = songKey(t);
       if(key && !t.bpm && songBpmMap[key]){ t.bpm = songBpmMap[key]; metaFilled = true; }
-      if(key && !t.focus && songFocusMap[key]){ t.focus = songFocusMap[key]; metaFilled = true; }
+      if(key && !t.workoutPlan && songWorkoutPlanMap[key]){ t.workoutPlan = songWorkoutPlanMap[key]; metaFilled = true; }
     });
     if(total || metaFilled) saveCurrentDataIntoProfile();
     if(total) renderCueList();
@@ -1747,7 +1806,7 @@
   // relative time). This is how an existing class's cues get turned into a
   // reusable template, and how a wrong template gets corrected.
   function saveTrackCuesToLibrary(track){
-    var key = songKey(track);
+    var key = songCueKey(track);
     if(!key) return;
     var b = findTrackBounds(track);
     if(!b) return;
@@ -1793,30 +1852,30 @@
     updateCurrentCueDisplay();
   }
 
-  // ── Track focus notes (Les Mills "TRACK FOCUS" / "WORKOUT PLAN") ───────────
+  // ── Workout plan notes (Les Mills "TRACK FOCUS" / "WORKOUT PLAN") ──────────
   // A per-track coaching blurb shown on the Now card; like BPM, it's a fact
   // about the SONG, so it also lives in a global songKey map.
 
-  function loadSongFocusMap(){
+  function loadSongWorkoutPlanMap(){
     try{
-      var raw = localStorage.getItem(SONG_FOCUS_KEY);
-      songFocusMap = raw ? JSON.parse(raw) : {};
-    }catch(e){ songFocusMap = {}; }
-    if(!songFocusMap || typeof songFocusMap !== 'object') songFocusMap = {};
+      var raw = localStorage.getItem(SONG_WORKOUT_PLAN_KEY);
+      songWorkoutPlanMap = raw ? JSON.parse(raw) : {};
+    }catch(e){ songWorkoutPlanMap = {}; }
+    if(!songWorkoutPlanMap || typeof songWorkoutPlanMap !== 'object') songWorkoutPlanMap = {};
   }
 
-  function saveSongFocusMap(){
-    try{ localStorage.setItem(SONG_FOCUS_KEY, JSON.stringify(songFocusMap)); }catch(e){}
+  function saveSongWorkoutPlanMap(){
+    try{ localStorage.setItem(SONG_WORKOUT_PLAN_KEY, JSON.stringify(songWorkoutPlanMap)); }catch(e){}
   }
 
-  function setTrackFocus(track, text){
+  function setTrackWorkoutPlan(track, text){
     text = String(text||'').trim();
-    track.focus = text;
+    track.workoutPlan = text;
     var key = songKey(track);
     if(key){
-      if(text) songFocusMap[key] = text;
-      else delete songFocusMap[key];
-      saveSongFocusMap();
+      if(text) songWorkoutPlanMap[key] = text;
+      else delete songWorkoutPlanMap[key];
+      saveSongWorkoutPlanMap();
     }
     saveCurrentDataIntoProfile();
     updateCurrentCueDisplay();
@@ -1840,7 +1899,7 @@
     tapTimes = [];
     document.getElementById('bpm-title').textContent = 'Song BPM — ' + (track.name || 'this track');
     document.getElementById('bpm-input').value = track.bpm || '';
-    document.getElementById('bpm-focus').value = track.focus || '';
+    document.getElementById('bpm-workout-plan').value = track.workoutPlan || '';
     document.getElementById('bpm-analyze-row').style.display = audioObjects[track.id] ? '' : 'none';
     document.getElementById('bpm-tap-hint').textContent = 'Or tap TAP on the beat — 4+ taps to lock in.';
     updateBpmCadences();
@@ -2124,7 +2183,7 @@
     lastCapturedLibIndex = -1;
     var info = getCurrentTrackInfo();
     if(info){
-      var key = songKey(info.track);
+      var key = songCueKey(info.track);
       if(key){
         var lib = songCueLibrary[key] || (songCueLibrary[key] = []);
         var rel = formatTime(info.trackElapsed);
@@ -2276,7 +2335,7 @@
     var colDur   = colIdx(['duration','dur','length','song duration','track duration','songduration','trackduration']);
     var colSpot  = colIdx(['spotify','spotify uri','spotify link','spotify url']);
     var colBpm   = colIdx(['bpm','beats per minute','song bpm','songbpm']);   // song tempo, not cue cadence
-    var colFocus = colIdx(['focus','track focus','trackfocus','notes','workout plan','workoutplan']);   // per-track coaching blurb
+    var colWorkoutPlan = colIdx(['workout plan','workoutplan','focus','track focus','trackfocus','notes']);   // per-track coaching blurb
 
     if(colTime === -1 && colCue === -1){
       return {error:'Could not find required columns. Make sure your header row includes "Time" and/or "Cue" (or similar column names).'};
@@ -2298,7 +2357,7 @@
         duration: get(colDur),
         spotify:  get(colSpot),
         bpm:      get(colBpm),
-        focus:    get(colFocus)
+        workoutPlan: get(colWorkoutPlan)
       });
     }
 
@@ -2334,34 +2393,47 @@
       r._track = curTrackName || '';
     });
 
-    // Pass 2: collect unique tracks in order, gather durations + Spotify links
-    var trackList = [], trackSeen = {};
+    // Pass 2: group CONSECUTIVE rows sharing a track name into one block —
+    // NOT all rows sharing that name anywhere in the sheet. A Les Mills-style
+    // class can legitimately reprise the same song later for a different
+    // block (different cues, different point in the class); grouping by name
+    // alone would fold that later block back into the first one, colliding
+    // its cue times with the original block's instead of placing them later.
+    // A contiguous run — whether the author left the Track cell blank on
+    // every row after the first (Excel merged-cell style) or retyped the
+    // same name on every row — is one block; the name repeating after a
+    // *different* name has appeared in between starts a brand-new block.
+    var trackList = [];
+    var curBlock = null, curBlockName = null;
     function parseBpmCell(s){
       var n = Math.round(parseFloat(s));
       return (n > 0 && n < 300) ? n : '';
     }
     rawRows.forEach(function(r){
       var name = r._track;
-      if(!name) return;
-      if(!trackSeen[name]){
-        var t = {id:Date.now()+trackList.length, name:name, duration: r.duration||'',
-                 spotifyUri: parseSpotifyLink(r.spotify||''), bpm: parseBpmCell(r.bpm),
-                 focus: r.focus||''};
-        trackSeen[name] = t;
-        trackList.push(t);
+      if(!name){ r._trackRef = null; return; }
+      if(!curBlock || name !== curBlockName){
+        curBlock = {id:Date.now()+trackList.length, name:name, duration: r.duration||'',
+                    spotifyUri: parseSpotifyLink(r.spotify||''), bpm: parseBpmCell(r.bpm),
+                    workoutPlan: r.workoutPlan||''};
+        curBlockName = name;
+        trackList.push(curBlock);
       } else {
-        if(r.duration && !trackSeen[name].duration) trackSeen[name].duration = r.duration;
-        if(r.spotify && !trackSeen[name].spotifyUri) trackSeen[name].spotifyUri = parseSpotifyLink(r.spotify);
-        if(r.bpm && !trackSeen[name].bpm) trackSeen[name].bpm = parseBpmCell(r.bpm);
-        if(r.focus && !trackSeen[name].focus) trackSeen[name].focus = r.focus;
+        if(r.duration && !curBlock.duration) curBlock.duration = r.duration;
+        if(r.spotify && !curBlock.spotifyUri) curBlock.spotifyUri = parseSpotifyLink(r.spotify);
+        if(r.bpm && !curBlock.bpm) curBlock.bpm = parseBpmCell(r.bpm);
+        if(r.workoutPlan && !curBlock.workoutPlan) curBlock.workoutPlan = r.workoutPlan;
       }
+      r._trackRef = curBlock;
     });
 
-    // Assign default duration if none found and calculate offsets
-    var offsets = {}, cum = 0;
+    // Assign default duration if none found and calculate offsets. Offsets
+    // are per BLOCK OBJECT (not per name), so two blocks with the same name
+    // still get their own, independent position in the class.
+    var cum = 0;
     trackList.forEach(function(t){
       if(!t.duration) t.duration = '3:00';
-      offsets[t.name] = cum;
+      t._offset = cum;
       cum += parseTime(t.duration);
     });
 
@@ -2373,11 +2445,12 @@
       return !!(r.cue || r.position || r.tempo || r.load);
     }).map(function(r,i){
       var relSecs = parseTime(r.time||'0');
-      var absSecs = r._track ? (offsets[r._track]||0) + relSecs : relSecs;
+      var absSecs = r._trackRef ? (r._trackRef._offset||0) + relSecs : relSecs;
       return {id:Date.now()+i, time:formatTime(absSecs),
               text:buildCueText(r), position:r.position, tempo:buildCueTempo(r)};
     });
 
+    trackList.forEach(function(t){ delete t._offset; });   // transient — getTrackBoundaries() recomputes live
     return {cues:newCues, tracks:trackList};
   }
 
@@ -2439,16 +2512,16 @@
     renderCueList();
     renderTrackList();
     if(result.tracks.length){
-      // Imported BPMs and focus notes are song facts — remember them globally, like cues
-      var mapChanged = false, focusChanged = false;
+      // Imported BPMs and workout plans are song facts — remember them globally, like cues
+      var mapChanged = false, planChanged = false;
       result.tracks.forEach(function(t){
         var key = songKey(t);
         if(!key) return;
         if(t.bpm && songBpmMap[key] !== t.bpm){ songBpmMap[key] = t.bpm; mapChanged = true; }
-        if(t.focus && songFocusMap[key] !== t.focus){ songFocusMap[key] = t.focus; focusChanged = true; }
+        if(t.workoutPlan && songWorkoutPlanMap[key] !== t.workoutPlan){ songWorkoutPlanMap[key] = t.workoutPlan; planChanged = true; }
       });
       if(mapChanged) saveSongBpmMap();
-      if(focusChanged) saveSongFocusMap();
+      if(planChanged) saveSongWorkoutPlanMap();
       fillCuesFromLibrary(result.tracks);
     }
   }
@@ -2902,6 +2975,16 @@
     btn.disabled = true;
     var linked = [], unsure = [], missed = [];
     var i = 0;
+    // Snapshot each candidate's pre-link cue key UP FRONT, before the loop
+    // mutates anything. Two occurrences of the same unlinked song share a
+    // plain songKey() until linked; songCueKey() tells them apart by their
+    // position among tracks with that SAME key — but linking track #1 first
+    // changes ITS key, which would make a live re-check of #2's "occurrence
+    // count" wrongly see no earlier match anymore and miscompute #2 as
+    // occurrence #1, stranding #2's saved cues under the old suffixed key.
+    // Freezing every old cue key before any mutation avoids that.
+    var oldCueKeyById = {};
+    candidates.forEach(function(t){ oldCueKeyById[t.id] = songCueKey(t); });
 
     function finish(){
       btn.disabled = false;
@@ -2941,8 +3024,9 @@
         if(hit){
           // Linking changes the song's identity key (name: → uri:) — migrate
           var oldKey = songKey(track);
+          var oldCueKey = oldCueKeyById[track.id];
           track.spotifyUri = hit.uri;
-          migrateSongKeyData(oldKey, songKey(track));
+          migrateSongKeyData(oldKey, songKey(track), oldCueKey, songCueKey(track));
           var artists = (hit.artists||[]).map(function(a){ return a.name; }).join(', ');
           linked.push({track: track, label: hit.name + (artists ? ' · ' + artists : '')});
         } else {
@@ -3360,7 +3444,7 @@
   // cues still gets one row (Track/Duration/Spotify only) so it isn't lost;
   // parseImportData() knows to register the track without inventing a cue.
   function buildSheetRows(){
-    var header = ['Time','Cue','Position','Tempo','Track','Duration','BPM','Spotify','Focus'];
+    var header = ['Time','Cue','Position','Tempo','Track','Duration','BPM','Spotify','Workout Plan'];
     var rows = [header];
 
     if(!tracks.length){
@@ -3387,7 +3471,7 @@
       var trackCues = buckets[i];
       var start = bounds[i].start;
       if(!trackCues.length){
-        rows.push(['', '', '', '', track.name||'', track.duration||'', track.bpm||'', track.spotifyUri||'', track.focus||'']);
+        rows.push(['', '', '', '', track.name||'', track.duration||'', track.bpm||'', track.spotifyUri||'', track.workoutPlan||'']);
         return;
       }
       trackCues.forEach(function(c, j){
@@ -3398,7 +3482,7 @@
           j===0 ? (track.duration||'') : '',
           j===0 ? (track.bpm||'') : '',
           j===0 ? (track.spotifyUri||'') : '',
-          j===0 ? (track.focus||'') : ''
+          j===0 ? (track.workoutPlan||'') : ''
         ]);
       });
     });
@@ -3469,7 +3553,7 @@
     var raw = document.getElementById('bpm-input').value.trim();
     var v = Math.round(Number(raw));
     if(raw !== '' && !(v > 0 && v < 300)){ alert('BPM should be a number between 1 and 299 (or blank to clear).'); return; }
-    setTrackFocus(bpmModalTrack, document.getElementById('bpm-focus').value);
+    setTrackWorkoutPlan(bpmModalTrack, document.getElementById('bpm-workout-plan').value);
     setTrackBpm(bpmModalTrack, raw === '' ? 0 : v);
     closeBpmModal();
   });
@@ -3516,14 +3600,14 @@
   document.getElementById('bpm-modal').addEventListener('click', function(e){
     if(e.target === this) closeBpmModal();
   });
-  // Tap the focus line on the Now card to edit the CURRENT track's note
+  // Tap the workout-plan line on the Now card to edit the CURRENT track's note
   // (the ♩ dialog is the add path when no note is showing yet)
   document.getElementById('track-info').addEventListener('click', function(){
     var info = getCurrentTrackInfo();
     if(!info) return;
-    var v = window.prompt('Track focus note for "' + (info.track.name || 'this song') + '" (blank to clear):', info.track.focus || '');
+    var v = window.prompt('Workout plan for "' + (info.track.name || 'this song') + '" (blank to clear):', info.track.workoutPlan || '');
     if(v === null) return;
-    setTrackFocus(info.track, v);
+    setTrackWorkoutPlan(info.track, v);
   });
   // Wake locks are auto-released when the tab hides; re-acquire on return
   document.addEventListener('visibilitychange', updateWakeLock);
@@ -3531,20 +3615,36 @@
   // back by itself once conditions allow (requestWakeLock no-ops while held)
   setInterval(updateWakeLock, 15000);
   document.getElementById('btn-screen').addEventListener('click', function(){
-    // Red ring = the phone refused the wake lock. On a phone there's no way to
-    // hover the tooltip, so a tap on the warning explains itself instead of
-    // silently toggling keep-awake off.
-    if(this.classList.contains('screen-warn')){
+    // Amber/red ring = the real wake lock isn't held. On a phone there's no
+    // way to hover the tooltip, so a tap explains itself instead of silently
+    // toggling keep-awake off.
+    if(this.classList.contains('screen-warn') || this.classList.contains('screen-fallback')){
+      // Field-confirmed on the Pixel: Chrome denies the Wake Lock API to
+      // file:// pages outright (permission can't be granted to an origin
+      // with no persistent identity) — the *same* file hosted over https
+      // gets the real lock with Battery Saver in the same state. So on the
+      // phone-storage copy this denial is EXPECTED, not a fault to chase.
+      var isFileOrigin = location.protocol === 'file:';
+      var fallbackRunning = !!(wakeVideo && !wakeVideo.paused);
       var why = 'The phone refused the screen wake lock' +
-                (wakeLockErrMsg ? ':\n"' + wakeLockErrMsg + '"' : '.') +
-                '\n\nThis is usually Android Battery Saver — turn it off in Settings (or charge the phone) and this fixes itself. ' +
-                (wakeVideo && !wakeVideo.paused
-                  ? 'Meanwhile the fallback is running and should be keeping the screen awake.'
-                  : 'The fallback isn\'t running either right now.') +
-                '\n\nOK = keep trying · Cancel = allow the screen to sleep';
+                (wakeLockErrMsg ? ':\n"' + wakeLockErrMsg + '"' : '.') + '\n\n';
+      if(isFileOrigin){
+        why += 'This is expected for a file opened straight from phone storage — Chrome only grants this permission to pages loaded over http(s). ' +
+               (fallbackRunning
+                 ? 'A fallback (a hidden looping video) is holding the screen awake instead, and this has been confirmed working.'
+                 : 'The fallback isn\'t running right now, so the screen may sleep.') +
+               ' If you switch to the hosted version of this app, the real lock works directly.';
+      } else {
+        why += 'This is usually Android Battery Saver — turn it off in Settings (or charge the phone) and this fixes itself. ' +
+               (fallbackRunning
+                 ? 'Meanwhile the fallback is running and should be keeping the screen awake.'
+                 : 'The fallback isn\'t running either right now.');
+      }
+      why += '\n\nOK = keep trying · Cancel = allow the screen to sleep';
       if(window.confirm(why)){ updateWakeLock(); return; }
       if(!keepScreenOn) return;   // running-driven warn; nothing to switch off
     }
+    pauseAllowsSleep = false;   // an explicit tap always overrides the post-pause sleep allowance
     keepScreenOn = !keepScreenOn;
     try{ localStorage.setItem(SCREEN_ON_KEY, keepScreenOn ? '1' : '0'); }catch(e){}
     updateScreenButton();
@@ -3554,6 +3654,7 @@
   document.getElementById('btn-sound').addEventListener('click', function(){
     soundOn = !soundOn;
     this.textContent = soundOn ? '🔔' : '🔕';
+    this.setAttribute('aria-pressed', soundOn ? 'true' : 'false');
   });
 
   document.getElementById('btn-capture').addEventListener('click', function(){
@@ -3687,8 +3788,8 @@
   // their range so a template can't be wiped by a class that lacks it.
   document.getElementById('btn-save-all-lib').addEventListener('click', function(){
     if(!tracks.length){ alert('Add some tracks to the setlist first.'); return; }
-    if(!window.confirm("Save each song's current cues (and BPM/focus note) as its reusable template? Existing templates for these songs are replaced.")) return;
-    var saved = 0, skipped = 0, bpmSaved = false, focusSaved = false;
+    if(!window.confirm("Save each song's current cues (and BPM/workout plan) as its reusable template? Existing templates for these songs are replaced.")) return;
+    var saved = 0, skipped = 0, bpmSaved = false, planSaved = false;
     tracks.forEach(function(t){
       var key = songKey(t);
       if(!key){ skipped++; return; }
@@ -3700,10 +3801,10 @@
       if(hasCues){ saveTrackCuesToLibrary(t); saved++; }
       else skipped++;
       if(t.bpm && songBpmMap[key] !== t.bpm){ songBpmMap[key] = t.bpm; bpmSaved = true; }
-      if(t.focus && songFocusMap[key] !== t.focus){ songFocusMap[key] = t.focus; focusSaved = true; }
+      if(t.workoutPlan && songWorkoutPlanMap[key] !== t.workoutPlan){ songWorkoutPlanMap[key] = t.workoutPlan; planSaved = true; }
     });
     if(bpmSaved) saveSongBpmMap();
-    if(focusSaved) saveSongFocusMap();
+    if(planSaved) saveSongWorkoutPlanMap();
     renderTrackList();
     alert('Saved templates for ' + saved + ' song(s)' +
           (skipped ? ' (skipped ' + skipped + ' with no cues or no name)' : '') + '.');
@@ -3775,12 +3876,18 @@
     var btn = document.getElementById('btn-screen');
     btn.textContent = keepScreenOn ? '🔆' : '🌙';
     btn.setAttribute('aria-pressed', keepScreenOn ? 'true' : 'false');
-    // Failure must be visible, not silent: red ring = the normal wake lock was
-    // refused (usually Battery Saver) and the video fallback is carrying it.
-    var warn = wakeLockWanted() && !wakeLock && wakeLockFailed;
-    btn.classList.toggle('screen-warn', warn);
-    btn.title = warn
-      ? "Phone refused the screen-awake lock (Battery Saver?) — using a fallback. If the screen still sleeps, turn off Battery Saver."
+    // Lock state must be visible, not silent — but with the right severity.
+    // Amber ring = no real lock, fallback video carrying it (normal for a
+    // file:// page: Chrome denies wake locks to file origins — field-confirmed
+    // on the Pixel, where the hosted copy gets the real lock and the fallback
+    // holds the screen locally). Red ring = nothing is holding the screen.
+    var notHeld = wakeLockWanted() && !wakeLock && wakeLockFailed;
+    var fallbackRunning = !!(wakeVideo && !wakeVideo.paused);
+    btn.classList.toggle('screen-fallback', notHeld && fallbackRunning);
+    btn.classList.toggle('screen-warn', notHeld && !fallbackRunning);
+    btn.title = notHeld
+      ? (fallbackRunning ? 'Screen held awake by the fallback — tap for details'
+                         : 'Nothing is keeping the screen awake — tap for details')
       : (keepScreenOn ? 'Screen stays awake — tap to allow sleep' : 'Screen may sleep — tap to keep awake');
   }
 
@@ -3791,7 +3898,7 @@
     renderPresetGrid();
     loadSongCueLibrary();
     loadSongBpmMap();
-    loadSongFocusMap();
+    loadSongWorkoutPlanMap();
     try{ keepScreenOn = localStorage.getItem(SCREEN_ON_KEY) !== '0'; }catch(e){}
     updateScreenButton();
     updateWakeLock();
